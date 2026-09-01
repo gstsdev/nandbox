@@ -21,6 +21,11 @@ export interface ComponentInstance {
   label?: string;
   /** Per-instance mutable data, e.g. an input switch's current value `{ value: 0 | 1 }`. */
   state?: Record<string, unknown>;
+  /**
+   * True for a challenge's fixed IO terminals: they can't be deleted and the
+   * verifier drives them. User-placed components are never locked.
+   */
+  locked?: boolean;
 }
 
 export interface Wire {

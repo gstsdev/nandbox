@@ -3,6 +3,7 @@
 
 import { allPrimitives } from "../domain/primitives";
 import type { PrimitiveDef } from "../domain/primitives";
+import { getChallenge } from "../challenges";
 import { useCircuitStore } from "../store/circuitStore";
 
 const GROUP_LABELS: Record<PrimitiveDef["category"], string> = {
@@ -13,9 +14,16 @@ const GROUP_LABELS: Record<PrimitiveDef["category"], string> = {
 export function Palette() {
   const pending = useCircuitStore((s) => s.pendingPlacement);
   const arm = useCircuitStore((s) => s.armPlacement);
+  const allowed = useCircuitStore((s) => getChallenge(s.activeChallengeId).allowedTypes);
+
+  // A challenge restricts the palette to the components it "unlocks"; the
+  // sandbox (allowed === undefined) offers everything.
+  const visible = allowed
+    ? allPrimitives().filter((p) => allowed.includes(p.type))
+    : allPrimitives();
 
   const groups = new Map<PrimitiveDef["category"], PrimitiveDef[]>();
-  for (const p of allPrimitives()) {
+  for (const p of visible) {
     const list = groups.get(p.category) ?? [];
     list.push(p);
     groups.set(p.category, list);

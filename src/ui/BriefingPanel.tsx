@@ -1,9 +1,11 @@
-// The teaching half of the app: the lesson for the current challenge. Until
-// gating and verification land (phase P1) any challenge can be selected here
-// for reading.
+// The teaching half of the app: the lesson for the current challenge, plus —
+// for real challenges — the "Check" button and the resulting truth table.
 
 import { useState } from "react";
 import { CHALLENGES, getChallenge } from "../challenges";
+import type { Challenge } from "../challenges";
+import type { VerifyResult } from "../challenges/verify";
+import { logicLabel } from "../sim/values";
 import { useCircuitStore } from "../store/circuitStore";
 
 export function BriefingPanel() {
@@ -59,8 +61,115 @@ export function BriefingPanel() {
           {challenge.funFact}
         </Section>
         <Section label="What's checked">{challenge.checks}</Section>
+        {challenge.truth && challenge.inputs.length > 0 && (
+          <VerifyBlock challenge={challenge} />
+        )}
       </div>
     </aside>
+  );
+}
+
+/** The Check button and the truth table it produces. */
+function VerifyBlock({ challenge }: { challenge: Challenge }) {
+  const verify = useCircuitStore((s) => s.verify);
+  const reset = useCircuitStore((s) => s.newDoc);
+  const result = useCircuitStore((s) => s.verifyResult);
+
+  return (
+    <section className="verify">
+      <div className="verify-actions">
+        <button type="button" className="btn-primary" onClick={verify}>
+          Check
+        </button>
+        <button type="button" onClick={reset}>
+          Reset canvas
+        </button>
+      </div>
+      {result && <VerifySummary result={result} challenge={challenge} />}
+      {result && result.rows.length > 0 && (
+        <TruthTable result={result} challenge={challenge} />
+      )}
+    </section>
+  );
+}
+
+function VerifySummary({
+  result,
+  challenge,
+}: {
+  result: VerifyResult;
+  challenge: Challenge;
+}) {
+  if (result.ok) {
+    return <p className="verify-msg is-ok">Passed — every combination matches.</p>;
+  }
+  if (result.oscillated) {
+    return (
+      <p className="verify-msg is-bad">
+        The circuit oscillates for some inputs — it never settles. Look for a
+        feedback loop.
+      </p>
+    );
+  }
+  const row = result.rows[result.firstFail];
+  if (!row) {
+    return <p className="verify-msg is-bad">Wire the output terminal(s) up first.</p>;
+  }
+  const inParts = challenge.inputs.map((n, i) => `${n}=${row.inputs[i]}`).join(", ");
+  const wantParts = challenge.outputs
+    .map((n, i) => `${n}=${row.expected[i]}`)
+    .join(", ");
+  const gotParts = challenge.outputs
+    .map((n, i) => `${n}=${logicLabel(row.actual[i] ?? "x")}`)
+    .join(", ");
+  return (
+    <p className="verify-msg is-bad">
+      Fails when {inParts}: expected {wantParts}, got {gotParts}.
+    </p>
+  );
+}
+
+/** Full truth table with a pass/fail dot per row. */
+function TruthTable({
+  result,
+  challenge,
+}: {
+  result: VerifyResult;
+  challenge: Challenge;
+}) {
+  return (
+    <div className="truth-wrap">
+      <table className="truth">
+        <thead>
+          <tr>
+            {challenge.inputs.map((n) => (
+              <th key={n}>{n}</th>
+            ))}
+            <th className="sep" />
+            {challenge.outputs.map((n) => (
+              <th key={n}>{n}</th>
+            ))}
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {result.rows.map((row, i) => (
+            <tr key={i} className={row.ok ? "" : "is-bad"}>
+              {row.inputs.map((b, j) => (
+                <td key={j}>{b}</td>
+              ))}
+              <td className="sep" />
+              {row.actual.map((v, j) => (
+                <td key={j} className={v !== row.expected[j] ? "is-wrong" : ""}>
+                  {logicLabel(v)}
+                </td>
+              ))}
+              <td>{row.ok ? "✓" : "✕"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

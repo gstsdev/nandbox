@@ -189,6 +189,10 @@ export function CircuitCanvas() {
     const store = useCircuitStore.getState();
     hoverPort.current = portAt(store.doc, world.x, world.y, PORT_HIT)?.ref ?? null;
     const d = drag.current;
+    
+    if (canvasRef.current) {
+      canvasRef.current.style.cursor = cursorFor(store, world, d, hoverPort.current !== null);
+    }
 
     if (d.kind === "pan") {
       store.setView({
@@ -245,6 +249,23 @@ export function CircuitCanvas() {
       <CanvasHints />
     </div>
   );
+}
+
+/**
+ * Pick the canvas cursor from what's under the pointer, so ports, draggable
+ * bodies, and clickable switches each read as interactive.
+ */
+function cursorFor(
+  store: ReturnType<typeof useCircuitStore.getState>,
+  world: Point,
+  d: DragState,
+  overPort: boolean,
+): string {
+  if (d.kind === "pan" || d.kind === "move") return "grabbing";
+  if (d.kind === "wire" || overPort || store.pendingPlacement) return "crosshair";
+  const c = componentAt(store.doc, world.x, world.y);
+  if (!c) return "default";
+  return c.type === "input" ? "pointer" : "grab";
 }
 
 /** Small contextual hint strip in the corner of the canvas. */

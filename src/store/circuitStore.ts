@@ -18,11 +18,14 @@ import type {
   PortRef,
   Wire,
 } from "../domain/types";
-import { DOC_FORMAT, emptyDoc, samePort } from "../domain/types";
+import { DOC_FORMAT, samePort } from "../domain/types";
 import { getPrimitive } from "../domain/primitives";
 import { Simulator } from "../sim/simulator";
 import type { Viewport } from "../canvas/geometry";
 import { snap } from "../canvas/geometry";
+import { buildStarterDoc, getChallenge } from "../challenges";
+import type { VerifyResult } from "../challenges/verify";
+import { verifyChallenge } from "../challenges/verify";
 
 interface SimStatus {
   settled: boolean;
@@ -44,6 +47,8 @@ interface CircuitState {
   sim: Simulator;
   simStatus: SimStatus;
   activeChallengeId: string;
+  /** Result of the last "Check", or null if not run since the circuit changed. */
+  verifyResult: VerifyResult | null;
 
   // --- placement / structure ---
   armPlacement: (type: string | null) => void;
@@ -74,6 +79,8 @@ interface CircuitState {
 
   // --- lesson ---
   setActiveChallenge: (id: string) => void;
+  /** Run the active challenge's exhaustive truth-table check. */
+  verify: () => void;
 }
 
 /** Build a fresh simulator for `doc`, settle it, and return it with its status. */
@@ -83,7 +90,7 @@ function recompute(doc: CircuitDoc): { sim: Simulator; simStatus: SimStatus } {
   return { sim, simStatus: { settled: result.settled, steps: result.steps } };
 }
 
-const initialDoc = emptyDoc("Scratch");
+const initialDoc = buildStarterDoc(getChallenge("sandbox"));
 
 export const useCircuitStore = create<CircuitState>((set, get) => ({
   doc: initialDoc,
@@ -93,6 +100,7 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
   wireDraft: null,
   ...recompute(initialDoc),
   activeChallengeId: "sandbox",
+  verifyResult: null,
 
   armPlacement: (type) => set({ pendingPlacement: type, wireDraft: null }),
 
@@ -122,6 +130,7 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
       doc: nextDoc,
       pendingPlacement: null,
       selection: [id],
+      verifyResult: null,
       ...recompute(nextDoc),
     });
   },
@@ -155,7 +164,9 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
     if (selection.length === 0) return;
     const sel = new Set(selection);
     const components = { ...doc.components };
-    for (const id of selection) delete components[id];
+    for (const id of selection) {
+      if (!components[id]?.locked) delete components[id];
+    }
     const wires: Record<string, Wire> = {};
     for (const [wid, w] of Object.entries(doc.wires)) {
       if (sel.has(wid)) continue;
@@ -163,7 +174,7 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
       wires[wid] = w;
     }
     const nextDoc = { ...doc, components, wires };
-    set({ doc: nextDoc, selection: [], ...recompute(nextDoc) });
+    set({ doc: nextDoc, selection: [], verifyResult: null, ...recompute(nextDoc) });
   },
 
   beginWire: (from) => set({ wireDraft: from, pendingPlacement: null }),
@@ -201,7 +212,7 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
     const id = crypto.randomUUID();
     wires[id] = { id, from, to: dest };
     const nextDoc = { ...doc, wires };
-    set({ doc: nextDoc, ...recompute(nextDoc) });
+    set({ doc: nextDoc, verifyResult: null, ...recompute(nextDoc) });
   },
 
   /**
@@ -245,17 +256,51 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
     })),
   clearSelection: () => set({ selection: [] }),
 
+  /** Reset the current challenge's canvas back to just its IO terminals. */
   newDoc: () => {
-    const doc = emptyDoc("Scratch");
-    set({ doc, selection: [], wireDraft: null, pendingPlacement: null, ...recompute(doc) });
+    const doc = buildStarterDoc(getChallenge(get().activeChallengeId));
+    set({
+      doc,
+      selection: [],
+      wireDraft: null,
+      pendingPlacement: null,
+      verifyResult: null,
+      ...recompute(doc),
+    });
   },
 
   loadFile: (file) => {
     const doc = file.doc;
-    set({ doc, selection: [], wireDraft: null, pendingPlacement: null, ...recompute(doc) });
+    set({
+      doc,
+      selection: [],
+      wireDraft: null,
+      pendingPlacement: null,
+      verifyResult: null,
+      ...recompute(doc),
+    });
   },
 
   exportFile: () => ({ format: DOC_FORMAT, doc: get().doc }),
 
-  setActiveChallenge: (id) => set({ activeChallengeId: id }),
+  /** Switch challenges: load the new one's starter canvas and reset the view. */
+  setActiveChallenge: (id) => {
+    const ch = getChallenge(id);
+    const doc = buildStarterDoc(ch);
+    set({
+      activeChallengeId: ch.id,
+      doc,
+      selection: [],
+      wireDraft: null,
+      pendingPlacement: null,
+      verifyResult: null,
+      view: { ...DEFAULT_VIEW },
+      ...recompute(doc),
+    });
+  },
+
+  verify: () => {
+    const { doc, activeChallengeId } = get();
+    set({ verifyResult: verifyChallenge(doc, getChallenge(activeChallengeId)) });
+  },
 }));

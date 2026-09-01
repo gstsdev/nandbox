@@ -49,6 +49,7 @@ export interface RenderInput {
 
 const WIRE_W = 0.9;
 const STROKE_W = 0.8;
+const MONO = 'ui-monospace, "SF Mono", Menlo, monospace';
 
 /** Colour for a wire/pin given the logic value it carries. */
 function wireColor(v: Logic, c: SceneColors): string {
@@ -195,6 +196,20 @@ function drawComponent(input: RenderInput, inst: ComponentInstance): void {
       ctx.strokeStyle = colors.selection;
       ctx.lineWidth = 0.6;
       ctx.stroke();
+    }
+  }
+
+  // Challenge IO terminals carry a label; draw it just outside the body.
+  if (inst.locked && inst.label) {
+    ctx.fillStyle = colors.gateText;
+    ctx.font = `500 9px ${MONO}`;
+    ctx.textBaseline = "middle";
+    if (inst.type === "input") {
+      ctx.textAlign = "right";
+      ctx.fillText(inst.label, b.x - 7, b.y + b.h / 2);
+    } else {
+      ctx.textAlign = "left";
+      ctx.fillText(inst.label, b.x + b.w + 7, b.y + b.h / 2);
     }
   }
 

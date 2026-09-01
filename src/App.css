@@ -240,6 +240,89 @@
   font-size: 13px;
 }
 
+/* --- verify block --- */
+.verify {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.verify-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.verify-actions button {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.verify-actions .btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.verify-msg {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  padding: 7px 10px;
+  border-radius: 5px;
+}
+
+.verify-msg.is-ok {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.verify-msg.is-bad {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.truth-wrap {
+  overflow-x: auto;
+}
+
+table.truth {
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+table.truth th,
+table.truth td {
+  padding: 3px 8px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+
+table.truth thead th {
+  color: var(--text-dim);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+table.truth .sep {
+  border-bottom: none;
+  width: 10px;
+  padding: 0;
+}
+
+table.truth tr.is-bad td {
+  color: var(--danger);
+}
+
+table.truth td.is-wrong {
+  font-weight: 700;
+  text-decoration: underline;
+}
+
 @media (max-width: 860px) {
   .workspace {
     grid-template-columns: 0 1fr 150px;
