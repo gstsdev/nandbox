@@ -9,9 +9,9 @@ export default function App() {
     <div className="app">
       <Toolbar />
       <div className="workspace">
-        <Palette />
-        <CircuitCanvas />
         <BriefingPanel />
+        <CircuitCanvas />
+        <Palette />
       </div>
     </div>
   );

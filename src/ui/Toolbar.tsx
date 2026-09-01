@@ -4,7 +4,7 @@
 import { useRef } from "react";
 import { DOC_FORMAT } from "../domain/types";
 import type { CircuitFile } from "../domain/types";
-import { useCircuitStore } from "../store/circuitStore";
+import { DEFAULT_VIEW, useCircuitStore } from "../store/circuitStore";
 
 /** Trigger a browser download of a text file. Used by "Save". */
 function download(filename: string, text: string): void {
@@ -66,7 +66,7 @@ export function Toolbar() {
         </button>
         <button
           type="button"
-          onClick={() => useCircuitStore.getState().setView({ panX: 120, panY: 90, scale: 2 })}
+          onClick={() => useCircuitStore.getState().setView({ ...DEFAULT_VIEW })}
         >
           Reset view
         </button>

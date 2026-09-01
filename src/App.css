@@ -9,7 +9,7 @@
 
 .workspace {
   display: grid;
-  grid-template-columns: 190px 1fr 340px;
+  grid-template-columns: 340px 1fr 190px;
   min-height: 0;
 }
 
@@ -82,7 +82,7 @@
 
 /* --- palette --- */
 .palette {
-  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
   background: var(--panel);
   padding: 12px 10px;
   overflow-y: auto;
@@ -172,7 +172,7 @@
 
 /* --- briefing --- */
 .briefing {
-  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
   background: var(--panel);
   display: flex;
   flex-direction: column;
@@ -242,7 +242,7 @@
 
 @media (max-width: 860px) {
   .workspace {
-    grid-template-columns: 150px 1fr 0;
+    grid-template-columns: 0 1fr 150px;
   }
   .briefing {
     display: none;

@@ -29,6 +29,9 @@ interface SimStatus {
   steps: number;
 }
 
+/** Starting camera, also used by the toolbar's "Reset view". */
+export const DEFAULT_VIEW: Viewport = { panX: 100, panY: 80, scale: 1.6 };
+
 interface CircuitState {
   doc: CircuitDoc;
   view: Viewport;
@@ -84,7 +87,7 @@ const initialDoc = emptyDoc("Scratch");
 
 export const useCircuitStore = create<CircuitState>((set, get) => ({
   doc: initialDoc,
-  view: { panX: 120, panY: 90, scale: 2 },
+  view: { ...DEFAULT_VIEW },
   selection: [],
   pendingPlacement: null,
   wireDraft: null,

@@ -21,7 +21,7 @@ export function BriefingPanel() {
           onClick={() => setCollapsed(false)}
           aria-label="Expand briefing"
         >
-          ‹
+          ›
         </button>
       </aside>
     );
@@ -48,7 +48,7 @@ export function BriefingPanel() {
           onClick={() => setCollapsed(true)}
           aria-label="Collapse briefing"
         >
-          ›
+          ‹
         </button>
       </div>
 
