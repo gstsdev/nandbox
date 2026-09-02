@@ -11,6 +11,7 @@
 // down the left, locked output terminals down the right.
 
 import type { CircuitDoc, ComponentInstance } from "../domain/types";
+import { getPrimitive } from "../domain/primitives";
 
 /** An IO terminal: a name and a bus width (1 unless stated). */
 export interface Terminal {
@@ -87,29 +88,32 @@ export function outputTermId(label: string): string {
  */
 export function buildStarterDoc(ch: Challenge): CircuitDoc {
   const components: Record<string, ComponentInstance> = {};
-  challengeInputs(ch).forEach((t, i) => {
+  const GAP = 20;
+
+  let y = 40;
+  challengeInputs(ch).forEach((t) => {
+    const type = t.width > 1 ? `in${t.width}` : "input";
     const id = inputTermId(t.name);
     components[id] = {
       id,
-      type: t.width > 1 ? `in${t.width}` : "input",
+      type,
       x: 40,
-      y: 56 + i * 72,
+      y,
       label: t.name,
       state: { value: 0, width: t.width },
       locked: true,
     };
+    y += (getPrimitive(type)?.height ?? 28) + GAP;
   });
-  challengeOutputs(ch).forEach((t, i) => {
+
+  y = 40;
+  challengeOutputs(ch).forEach((t) => {
+    const type = t.width > 1 ? `out${t.width}` : "output";
     const id = outputTermId(t.name);
-    components[id] = {
-      id,
-      type: t.width > 1 ? `out${t.width}` : "output",
-      x: 340,
-      y: 56 + i * 72,
-      label: t.name,
-      locked: true,
-    };
+    components[id] = { id, type, x: 340, y, label: t.name, locked: true };
+    y += (getPrimitive(type)?.height ?? 28) + GAP;
   });
+
   return { id: crypto.randomUUID(), name: ch.title, components, wires: {} };
 }
 
