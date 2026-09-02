@@ -11,6 +11,7 @@ import { useCircuitStore } from "../store/circuitStore";
 const GROUP_LABELS: Record<PrimitiveDef["category"], string> = {
   io: "In / Out",
   gate: "Gates",
+  bus: "Buses",
 };
 
 export function Palette() {

@@ -1,11 +1,13 @@
 // Exhaustive verifier for combinational challenges. Drives every possible
-// input combination into a throwaway copy of the circuit, settles it, and
-// compares the output terminals against the challenge's reference truth
-// function. Feasible because early challenges have few inputs (<= ~10).
+// input combination into a fresh copy of the circuit, settles it, and compares
+// the output terminals against the challenge's reference truth function.
+// Feasible because early challenges have few inputs (<= ~10).
 
 import type { CircuitDoc } from "../domain/types";
 import type { Logic } from "../sim/values";
+import { bit } from "../sim/values";
 import { Simulator } from "../sim/simulator";
+import { flatten } from "../sim/flatten";
 import type { Challenge } from ".";
 import { inputTermId, outputTermId } from ".";
 
@@ -53,9 +55,9 @@ export function verifyChallenge(doc: CircuitDoc, ch: Challenge): VerifyResult {
       if (c) testDoc.components[id] = { ...c, state: { ...c.state, value: bits[i] } };
     });
 
-    const sim = new Simulator(testDoc);
+    const sim = new Simulator(flatten(testDoc).flat);
     const settle = sim.reset();
-    const actual = outIds.map((id) => sim.inputValue({ component: id, port: "in" }));
+    const actual = outIds.map((id) => bit(sim.inputValue({ component: id, port: "in" })));
     const expected = ch.truth(bits);
     const ok =
       settle.settled &&

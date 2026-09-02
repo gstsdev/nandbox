@@ -8,12 +8,14 @@
 
 import type { CircuitDoc, ComponentInstance, PortRef } from "../domain/types";
 import { getComponentDef, isComposite } from "../domain/composite";
-import type { Logic } from "../sim/values";
+import type { Bus } from "../sim/values";
+import { bit, busLabel } from "../sim/values";
+import type { AnyComponentDef } from "../domain/composite";
 import type { Point, Viewport } from "./geometry";
 import { GRID, componentBounds, eachPort, endpoint, screenToWorld, snap } from "./geometry";
 
-/** Reads the logic value at a port, transparently following block boundaries. */
-export type SignalReader = (ref: PortRef, kind: "in" | "out") => Logic;
+/** Reads the bus value at a port, transparently following block boundaries. */
+export type SignalReader = (ref: PortRef, kind: "in" | "out") => Bus;
 
 export interface SceneColors {
   bg: string;
@@ -54,9 +56,18 @@ const WIRE_W = 0.9;
 const STROKE_W = 0.8;
 const MONO = 'ui-monospace, "SF Mono", Menlo, monospace';
 
-/** Colour for a wire/pin given the logic value it carries. */
-function wireColor(v: Logic, c: SceneColors): string {
-  return v === 1 ? c.wire1 : v === 0 ? c.wire0 : c.wireX;
+/**
+ * Colour for a wire/pin given the bus it carries: amber if any bit is unknown,
+ * otherwise "off" only when every bit is 0, else "on".
+ */
+function busColor(b: Bus, c: SceneColors): string {
+  if (b.some((v) => v === "x")) return c.wireX;
+  return b.some((v) => v === 1) ? c.wire1 : c.wire0;
+}
+
+/** Line width for a wire: heavier for multi-bit buses. */
+function wireWidth(b: Bus): number {
+  return b.length > 1 ? WIRE_W * 2.1 : WIRE_W;
 }
 
 /** Full-frame draw. Clears and repaints; safe to call every frame. */
@@ -82,7 +93,8 @@ export function renderScene(input: RenderInput): void {
     const a = endpoint(doc, w.from);
     const b = endpoint(doc, w.to);
     if (!a || !b) continue;
-    drawWire(ctx, a, b, wireColor(input.read(w.from, "out"), colors));
+    const bus = input.read(w.from, "out");
+    drawWire(ctx, a, b, busColor(bus, colors), wireWidth(bus));
   }
 
   drawWireDraft(input);
@@ -121,10 +133,11 @@ function drawWire(
   a: Point,
   b: Point,
   color: string,
+  lineWidth = WIRE_W,
 ): void {
   const dx = Math.max(18, Math.abs(b.x - a.x) * 0.5);
   ctx.strokeStyle = color;
-  ctx.lineWidth = WIRE_W;
+  ctx.lineWidth = lineWidth;
   ctx.lineCap = "round";
   ctx.beginPath();
   ctx.moveTo(a.x, a.y);
@@ -151,6 +164,9 @@ function drawComponent(input: RenderInput, inst: ComponentInstance): void {
   const selected = selection.has(inst.id);
   const composite = isComposite(def);
 
+  const wideIn = /^in\d+$/.test(inst.type);
+  const wideOut = /^out\d+$/.test(inst.type);
+
   if (inst.type === "input") {
     const on = inst.state?.value === 1;
     roundRect(ctx, b.x, b.y, b.w, b.h, 3);
@@ -161,7 +177,7 @@ function drawComponent(input: RenderInput, inst: ComponentInstance): void {
     ctx.stroke();
     label(ctx, on ? "1" : "0", b.x + b.w / 2, b.y + b.h / 2, colors.gateText, 13);
   } else if (inst.type === "output") {
-    const v = read({ component: inst.id, port: "in" }, "in");
+    const v = bit(read({ component: inst.id, port: "in" }, "in"));
     ctx.beginPath();
     ctx.arc(b.x + b.w / 2, b.y + b.h / 2, b.h / 2, 0, Math.PI * 2);
     ctx.fillStyle = v === 1 ? colors.ledOn : colors.gateFill;
@@ -169,6 +185,17 @@ function drawComponent(input: RenderInput, inst: ComponentInstance): void {
     ctx.strokeStyle = v === "x" ? colors.wireX : colors.gateStroke;
     ctx.lineWidth = STROKE_W;
     ctx.stroke();
+  } else if (wideIn) {
+    drawBitColumn(ctx, b, def, (inst.state?.value as number) ?? 0, colors);
+  } else if (wideOut) {
+    const bus = read({ component: inst.id, port: "in" }, "in");
+    roundRect(ctx, b.x, b.y, b.w, b.h, 4);
+    ctx.fillStyle = colors.gateFill;
+    ctx.fill();
+    ctx.strokeStyle = colors.gateStroke;
+    ctx.lineWidth = STROKE_W;
+    ctx.stroke();
+    label(ctx, busLabel(bus), b.x + b.w / 2, b.y + b.h / 2, colors.gateText, 11);
   } else {
     roundRect(ctx, b.x, b.y, b.w, b.h, 4);
     ctx.fillStyle = composite ? colors.blockFill : colors.gateFill;
@@ -183,8 +210,8 @@ function drawComponent(input: RenderInput, inst: ComponentInstance): void {
   for (const p of eachPort(inst)) {
     const v = read(p.ref, p.kind === "out" ? "out" : "in");
     const stubX = p.kind === "out" ? p.x + 4 : p.x - 4;
-    ctx.strokeStyle = wireColor(v, colors);
-    ctx.lineWidth = WIRE_W;
+    ctx.strokeStyle = busColor(v, colors);
+    ctx.lineWidth = wireWidth(v);
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
     ctx.lineTo(stubX, p.y);
@@ -194,7 +221,7 @@ function drawComponent(input: RenderInput, inst: ComponentInstance): void {
       hoverPort?.component === p.ref.component && hoverPort?.port === p.ref.port;
     ctx.beginPath();
     ctx.arc(p.x, p.y, hovered ? 2.6 : 1.7, 0, Math.PI * 2);
-    ctx.fillStyle = wireColor(v, colors);
+    ctx.fillStyle = busColor(v, colors);
     ctx.fill();
     if (hovered) {
       ctx.strokeStyle = colors.selection;
@@ -254,6 +281,40 @@ function drawGhost({ ctx, pendingPlacement, pointerWorld, colors }: RenderInput)
   ctx.lineWidth = STROKE_W;
   ctx.stroke();
   ctx.restore();
+}
+
+/**
+ * Wide input terminal: a stacked column of bit-cells (MSB at top), each filled
+ * when that bit of `value` is 1. Clicking a cell toggles it (handled in
+ * CircuitCanvas). Also prints the decimal value below.
+ */
+function drawBitColumn(
+  ctx: CanvasRenderingContext2D,
+  b: { x: number; y: number; w: number; h: number },
+  def: AnyComponentDef,
+  value: number,
+  colors: SceneColors,
+): void {
+  const out = def.ports.find((p) => p.kind === "out");
+  const n = out?.width ?? 1;
+  const pad = 3;
+  const cellH = (b.h - pad * 2) / n;
+  roundRect(ctx, b.x, b.y, b.w, b.h, 3);
+  ctx.fillStyle = colors.gateFill;
+  ctx.fill();
+  ctx.strokeStyle = colors.gateStroke;
+  ctx.lineWidth = STROKE_W;
+  ctx.stroke();
+  for (let i = 0; i < n; i++) {
+    const on = (value >> (n - 1 - i)) & 1;
+    ctx.beginPath();
+    ctx.rect(b.x + pad, b.y + pad + i * cellH + 0.5, b.w - pad * 2, cellH - 1);
+    ctx.fillStyle = on ? colors.inputOn : colors.gateFill;
+    ctx.fill();
+    ctx.strokeStyle = colors.gateStroke;
+    ctx.lineWidth = 0.4;
+    ctx.stroke();
+  }
 }
 
 function roundRect(

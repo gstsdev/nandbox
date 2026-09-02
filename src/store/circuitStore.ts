@@ -23,7 +23,7 @@ import {
 } from "../domain/composite";
 import { Simulator } from "../sim/simulator";
 import { flatten } from "../sim/flatten";
-import type { Logic } from "../sim/values";
+import type { Bus } from "../sim/values";
 import type { Viewport } from "../canvas/geometry";
 import { snap } from "../canvas/geometry";
 import { buildStarterDoc, getChallenge } from "../challenges";
@@ -58,8 +58,8 @@ interface CircuitState {
   /** Registered block types, in creation order — drives the palette's Blocks group. */
   blockTypes: string[];
 
-  /** Read a port's logic value, following block boundaries. Used by the renderer. */
-  readSignal: (ref: PortRef, kind: "in" | "out") => Logic;
+  /** Read a port's bus value, following block boundaries. Used by the renderer. */
+  readSignal: (ref: PortRef, kind: "in" | "out") => Bus;
 
   // --- placement / structure ---
   armPlacement: (type: string | null) => void;
@@ -78,6 +78,8 @@ interface CircuitState {
 
   // --- simulation input ---
   toggleInput: (id: ComponentId) => void;
+  /** Flip one bit of a wide input terminal (in8 etc.). */
+  toggleInputBit: (id: ComponentId, bitIndex: number) => void;
 
   // --- view ---
   setView: (patch: Partial<Viewport>) => void;
@@ -313,6 +315,22 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
     const inst = doc.components[id];
     if (!inst || inst.type !== "input") return;
     const value = inst.state?.value === 1 ? 0 : 1;
+    const nextDoc: CircuitDoc = {
+      ...doc,
+      components: {
+        ...doc.components,
+        [id]: { ...inst, state: { ...inst.state, value } },
+      },
+    };
+    set({ doc: nextDoc, ...recompute(nextDoc) });
+  },
+
+  toggleInputBit: (id, bitIndex) => {
+    const { doc } = get();
+    const inst = doc.components[id];
+    if (!inst) return;
+    const cur = (inst.state?.value as number) ?? 0;
+    const value = cur ^ (1 << bitIndex);
     const nextDoc: CircuitDoc = {
       ...doc,
       components: {

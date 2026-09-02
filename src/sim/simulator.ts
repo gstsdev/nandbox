@@ -2,17 +2,19 @@
 //
 // The editor is hierarchical, but the simulator is not: callers pass a
 // document that `flatten()` has already reduced to primitive components only.
-// Each output port carries a current Logic value.
-// Evaluating a node reads its input values (following wires to their driver),
-// computes new outputs, and — for any output that changed — schedules the
-// downstream nodes to re-evaluate after this node's propagation delay.
+// Each output port carries a current bus value (a length-1 bus for a plain
+// wire). Evaluating a node reads its input buses (following wires to their
+// driver, coerced to the port's width), computes new outputs, and — for any
+// output that changed — schedules the downstream nodes to re-evaluate after
+// this node's propagation delay.
 //
 // "Settling" runs the queue until it empties. If it does not empty within
 // `maxSteps`, the circuit is oscillating and is reported as unsettled.
 
 import type { CircuitDoc, ComponentId, PortRef } from "../domain/types";
 import { getPrimitive } from "../domain/primitives";
-import type { Logic } from "./values";
+import type { Bus } from "./values";
+import { busEqual, busX, coerceWidth } from "./values";
 import { EventQueue } from "./eventQueue";
 
 interface Source {
@@ -27,10 +29,12 @@ interface SimNode {
   state: Record<string, unknown> | undefined;
   inputPorts: string[];
   outputPorts: string[];
+  /** Declared bus width per port (input and output), defaulting to 1. */
+  widths: Record<string, number>;
   /** For each input port: the driving output port, or null if unconnected. */
   inputSource: Record<string, Source | null>;
-  /** Current value on each output port. */
-  out: Record<string, Logic>;
+  /** Current bus value on each output port. */
+  out: Record<string, Bus>;
 }
 
 export interface SettleResult {
@@ -63,8 +67,10 @@ export class Simulator {
       if (!def) continue;
       const inputPorts = def.ports.filter((p) => p.kind === "in").map((p) => p.name);
       const outputPorts = def.ports.filter((p) => p.kind === "out").map((p) => p.name);
-      const out: Record<string, Logic> = {};
-      for (const p of outputPorts) out[p] = "x";
+      const widths: Record<string, number> = {};
+      for (const p of def.ports) widths[p.name] = p.width ?? 1;
+      const out: Record<string, Bus> = {};
+      for (const p of outputPorts) out[p] = busX(widths[p]);
       const inputSource: Record<string, Source | null> = {};
       for (const p of inputPorts) inputSource[p] = null;
       this.nodes.set(c.id, {
@@ -74,6 +80,7 @@ export class Simulator {
         state: c.state,
         inputPorts,
         outputPorts,
+        widths,
         inputSource,
         out,
       });
@@ -102,7 +109,7 @@ export class Simulator {
     this.queue.clear();
     this.now = 0;
     for (const node of this.nodes.values()) {
-      for (const p of node.outputPorts) node.out[p] = "x";
+      for (const p of node.outputPorts) node.out[p] = busX(node.widths[p]);
       this.queue.push(0, node.id);
     }
     return this.settle();
@@ -142,7 +149,7 @@ export class Simulator {
   }
 
   /**
-   * Recompute one node: read its input values, run the primitive's `evaluate`,
+   * Recompute one node: read its input buses, run the primitive's `evaluate`,
    * and for every output that actually changed, schedule its readers to run
    * again after this node's propagation delay (min 1 tick, so time always
    * advances and loops can't stall the clock).
@@ -153,16 +160,16 @@ export class Simulator {
     const def = getPrimitive(node.type);
     if (!def) return;
 
-    const inputs: Record<string, Logic> = {};
+    const inputs: Record<string, Bus> = {};
     for (const p of node.inputPorts) {
-      inputs[p] = this.readSource(node.inputSource[p]);
+      inputs[p] = coerceWidth(this.readSource(node.inputSource[p]), node.widths[p]);
     }
 
     const result = def.evaluate(inputs, node.state);
     const scheduleAt = time + Math.max(1, node.delay);
     for (const p of node.outputPorts) {
-      const next = result[p] ?? "x";
-      if (next !== node.out[p]) {
+      const next = coerceWidth(result[p] ?? busX(node.widths[p]), node.widths[p]);
+      if (!busEqual(next, node.out[p])) {
         node.out[p] = next;
         const readers = this.downstream.get(`${id}:${p}`);
         if (readers) {
@@ -172,25 +179,28 @@ export class Simulator {
     }
   }
 
-  private readSource(src: Source | null): Logic {
-    if (!src) return "x";
+  private readSource(src: Source | null): Bus {
+    if (!src) return busX(1);
     const node = this.nodes.get(src.comp);
-    return node ? node.out[src.port] ?? "x" : "x";
+    return node?.out[src.port] ?? busX(1);
   }
 
-  /** Current value on an output port. Called by the renderer to colour wires and pins. */
-  outputValue(ref: PortRef): Logic {
+  /** Current bus on an output port. Called by the renderer to colour wires and pins. */
+  outputValue(ref: PortRef): Bus {
     const node = this.nodes.get(ref.component);
-    return node ? node.out[ref.port] ?? "x" : "x";
+    return node?.out[ref.port] ?? busX(1);
   }
 
   /**
-   * Value seen at an input port — follows its wire back to the driving output,
-   * or X if unconnected. Used by the renderer for input pins and OUTPUT lamps.
+   * Bus seen at an input port — follows its wire back to the driving output,
+   * or all-X if unconnected. Used by the renderer for input pins and OUTPUTs.
    */
-  inputValue(ref: PortRef): Logic {
+  inputValue(ref: PortRef): Bus {
     const node = this.nodes.get(ref.component);
-    if (!node) return "x";
-    return this.readSource(node.inputSource[ref.port] ?? null);
+    if (!node) return busX(1);
+    return coerceWidth(
+      this.readSource(node.inputSource[ref.port] ?? null),
+      node.widths[ref.port] ?? 1,
+    );
   }
 }

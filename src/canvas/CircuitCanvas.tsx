@@ -10,7 +10,7 @@ import type { PortRef } from "../domain/types";
 import { getComponentDef } from "../domain/composite";
 import { useCircuitStore } from "../store/circuitStore";
 import type { Point } from "./geometry";
-import { componentAt, portAt, screenToWorld, wireAt } from "./geometry";
+import { componentAt, componentBounds, portAt, screenToWorld, wireAt } from "./geometry";
 import type { SceneColors } from "./renderer";
 import { renderScene } from "./renderer";
 
@@ -22,7 +22,14 @@ const DRAG_SLOP = 3;
 type DragState =
   | { kind: "idle" }
   | { kind: "pan"; lastX: number; lastY: number }
-  | { kind: "press"; id: string; downX: number; downY: number; isInput: boolean }
+  | {
+      kind: "press";
+      id: string;
+      downX: number;
+      downY: number;
+      isInput: boolean;
+      isWideInput: boolean;
+    }
   // Pointer is down on a port: a click here disconnects it, a drag starts a wire.
   | { kind: "portpress"; ref: PortRef; downX: number; downY: number }
   | { kind: "move"; ids: string[]; last: Point }
@@ -170,6 +177,7 @@ export function CircuitCanvas() {
         downX: sx,
         downY: sy,
         isInput: comp.type === "input",
+        isWideInput: /^in\d+$/.test(comp.type),
       };
       return;
     }
@@ -231,6 +239,17 @@ export function CircuitCanvas() {
 
     if (d.kind === "press" && d.isInput) {
       store.toggleInput(d.id);
+    } else if (d.kind === "press" && d.isWideInput) {
+      // Toggle the bit-cell under the pointer (cells are MSB-first, top to bottom).
+      const inst = store.doc.components[d.id];
+      const def = getComponentDef(inst?.type ?? "");
+      const n = def?.ports.find((p) => p.kind === "out")?.width ?? 1;
+      if (inst && n > 1) {
+        const b = componentBounds(inst);
+        const cell = Math.floor(((world.y - b.y - 3) / (b.h - 6)) * n);
+        const clamped = Math.min(n - 1, Math.max(0, cell));
+        store.toggleInputBit(d.id, n - 1 - clamped);
+      }
     } else if (d.kind === "portpress") {
       // Click on a port (no drag) → disconnect it.
       store.removeWiresAtPort(d.ref);
@@ -275,7 +294,7 @@ function cursorFor(
   if (d.kind === "wire" || overPort || store.pendingPlacement) return "crosshair";
   const c = componentAt(store.doc, world.x, world.y);
   if (!c) return "default";
-  return c.type === "input" ? "pointer" : "grab";
+  return c.type === "input" || /^in\d+$/.test(c.type) ? "pointer" : "grab";
 }
 
 /** Small contextual hint strip in the corner of the canvas. */
