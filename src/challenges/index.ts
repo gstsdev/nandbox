@@ -265,7 +265,7 @@ export const CHALLENGES: Challenge[] = [
     funFact:
       "It's called 'half' because it can't accept a carry coming in from a lower column. Chain a second one and you get a full adder.",
     checks: "All four input combinations are checked for both sum and carry.",
-    allowedTypes: [...BASIC_GATES],
+    allowedTypes: [...BASIC_GATES, "composite"],
     inputs: ["a", "b"],
     outputs: ["sum", "carry"],
     truth: ([a, b]) => [a === b ? 0 : 1, a && b ? 1 : 0],
@@ -289,7 +289,7 @@ export const CHALLENGES: Challenge[] = [
     funFact:
       "Stack eight full adders, carry-out to carry-in, and you can add two 8-bit numbers. That chain is the 'ripple-carry adder' — and the reason addition gets slower for wider numbers.",
     checks: "All eight input combinations are checked for both outputs.",
-    allowedTypes: [...BASIC_GATES],
+    allowedTypes: [...BASIC_GATES, "composite"],
     inputs: ["a", "b", "cin"],
     outputs: ["sum", "cout"],
     truth: ([a, b, cin]) => {
