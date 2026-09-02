@@ -21,10 +21,12 @@ export function Palette() {
   const blockTypes = useCircuitStore((s) => s.blockTypes);
 
   // A challenge restricts the palette to the components it "unlocks"; the
-  // sandbox (allowed === undefined) offers everything, blocks included.
+  // sandbox (allowed === undefined) offers everything. Blocks show in the
+  // sandbox and in any challenge that lists "composite".
   const visible = allowed
     ? allPrimitives().filter((p) => allowed.includes(p.type))
     : allPrimitives();
+  const showBlocks = !allowed || allowed.includes("composite");
 
   const groups = new Map<PrimitiveDef["category"], PrimitiveDef[]>();
   for (const p of visible) {
@@ -33,9 +35,9 @@ export function Palette() {
     groups.set(p.category, list);
   }
 
-  const blocks = allowed
-    ? []
-    : blockTypes.map(getComposite).filter((b) => b !== undefined);
+  const blocks = showBlocks
+    ? blockTypes.map(getComposite).filter((b) => b !== undefined)
+    : [];
 
   return (
     <aside className="palette">
@@ -59,7 +61,7 @@ export function Palette() {
         </div>
       ))}
 
-      {!allowed && (
+      {showBlocks && (
         <div className="palette-group">
           <div className="palette-group-label">Blocks</div>
           {blocks.length > 0 && (

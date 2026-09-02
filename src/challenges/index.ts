@@ -12,6 +12,21 @@
 
 import type { CircuitDoc, ComponentInstance } from "../domain/types";
 
+/** An IO terminal: a name and a bus width (1 unless stated). */
+export interface Terminal {
+  name: string;
+  width: number;
+}
+
+/** Terminal spec as authored — a bare string is a 1-bit terminal. */
+export type TerminalSpec = string | { name: string; width?: number };
+
+export function normTerminal(spec: TerminalSpec): Terminal {
+  return typeof spec === "string"
+    ? { name: spec, width: 1 }
+    : { name: spec.name, width: spec.width ?? 1 };
+}
+
 export interface Challenge {
   id: string;
   /** 0 = free sandbox, 1..n = ordered lessons. */
@@ -34,15 +49,26 @@ export interface Challenge {
    * `undefined` means everything (used by the sandbox).
    */
   allowedTypes?: string[];
-  /** Ordered input-terminal labels. Empty for the sandbox. */
-  inputs: string[];
-  /** Ordered output-terminal labels. Empty for the sandbox. */
-  outputs: string[];
+  /** Ordered input terminals. Empty for the sandbox. */
+  inputs: TerminalSpec[];
+  /** Ordered output terminals. Empty for the sandbox. */
+  outputs: TerminalSpec[];
   /**
-   * Reference behaviour: given input bits in `inputs` order, return the
-   * expected output bits in `outputs` order. Absent for the sandbox.
+   * Reference behaviour: given each input terminal's integer value (in
+   * `inputs` order), return each output terminal's expected value (in
+   * `outputs` order). Absent for the sandbox.
    */
   truth?: (inputs: number[]) => number[];
+}
+
+/** Input terminals of a challenge, normalised. */
+export function challengeInputs(ch: Challenge): Terminal[] {
+  return ch.inputs.map(normTerminal);
+}
+
+/** Output terminals of a challenge, normalised. */
+export function challengeOutputs(ch: Challenge): Terminal[] {
+  return ch.outputs.map(normTerminal);
 }
 
 /** Deterministic id of an input terminal, so the verifier can find it. */
@@ -61,26 +87,26 @@ export function outputTermId(label: string): string {
  */
 export function buildStarterDoc(ch: Challenge): CircuitDoc {
   const components: Record<string, ComponentInstance> = {};
-  ch.inputs.forEach((label, i) => {
-    const id = inputTermId(label);
+  challengeInputs(ch).forEach((t, i) => {
+    const id = inputTermId(t.name);
     components[id] = {
       id,
-      type: "input",
+      type: t.width > 1 ? `in${t.width}` : "input",
       x: 40,
-      y: 56 + i * 56,
-      label,
-      state: { value: 0 },
+      y: 56 + i * 72,
+      label: t.name,
+      state: { value: 0, width: t.width },
       locked: true,
     };
   });
-  ch.outputs.forEach((label, i) => {
-    const id = outputTermId(label);
+  challengeOutputs(ch).forEach((t, i) => {
+    const id = outputTermId(t.name);
     components[id] = {
       id,
-      type: "output",
-      x: 320,
-      y: 56 + i * 56,
-      label,
+      type: t.width > 1 ? `out${t.width}` : "output",
+      x: 340,
+      y: 56 + i * 72,
+      label: t.name,
       locked: true,
     };
   });
@@ -265,6 +291,34 @@ export const CHALLENGES: Challenge[] = [
     truth: ([a, b, cin]) => {
       const total = a + b + cin;
       return [total & 1, total >= 2 ? 1 : 0];
+    },
+  },
+
+  {
+    id: "adder8",
+    index: 8,
+    title: "8-bit adder",
+    goal:
+      "Add two 8-bit numbers and produce their 8-bit sum plus a carry-out.",
+    howItWorks:
+      "Each column of the addition is a full adder: it takes one bit of a, one bit of b, and the carry from the column to its right, and produces a sum bit and a carry into the next column. Eight of them in a row, carry rippling left, adds two bytes.",
+    hints: [
+      "Use a splitter (÷8) to break each input bus into 8 separate bits, and a merger (×8) to bundle the 8 sum bits back onto the output bus.",
+      "The bit-0 (rightmost) full adder's carry-in is 0. Every other carry-in is the carry-out of the adder one place to its right.",
+      "Build one full adder, select it, and 'Make block' — then place eight copies instead of wiring 40 gates.",
+    ],
+    solution:
+      "Split a and b. carry[0] = 0. For i in 0..7: FullAdder(a[i], b[i], carry[i]) → sum[i], carry[i+1]. Merge sum[0..7] to the output bus. cout = carry[8].",
+    funFact:
+      "This is a 'ripple-carry' adder: the carry must propagate through all eight stages, so the worst case is 8 gate delays deep. Carry-lookahead adders compute the carries in parallel to go faster.",
+    checks:
+      "Edge cases (0, 255, overflow) plus a few hundred random pairs are checked against a + b and the carry-out.",
+    allowedTypes: [...BASIC_GATES, "split8", "merge8", "composite"],
+    inputs: [{ name: "a", width: 8 }, { name: "b", width: 8 }, "cin"],
+    outputs: [{ name: "sum", width: 8 }, "cout"],
+    truth: ([a, b, cin]) => {
+      const total = a + b + cin;
+      return [total & 0xff, total > 0xff ? 1 : 0];
     },
   },
 ];

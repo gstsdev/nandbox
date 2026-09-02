@@ -3,10 +3,14 @@
 // and the resulting truth table.
 
 import { useState } from "react";
-import { CHALLENGES, getChallenge } from "../challenges";
+import {
+  CHALLENGES,
+  challengeInputs,
+  challengeOutputs,
+  getChallenge,
+} from "../challenges";
 import type { Challenge } from "../challenges";
 import type { VerifyResult } from "../challenges/verify";
-import { logicLabel } from "../sim/values";
 import { useCircuitStore } from "../store/circuitStore";
 
 export function BriefingPanel() {
@@ -151,6 +155,8 @@ function VerifyBlock({ challenge }: { challenge: Challenge }) {
   );
 }
 
+const valLabel = (v: number | null): string => (v === null ? "X" : String(v));
+
 function VerifySummary({
   result,
   challenge,
@@ -158,8 +164,15 @@ function VerifySummary({
   result: VerifyResult;
   challenge: Challenge;
 }) {
+  const inNames = challengeInputs(challenge).map((t) => t.name);
+  const outNames = challengeOutputs(challenge).map((t) => t.name);
+
   if (result.ok) {
-    return <p className="verify-msg is-ok">Passed — every combination matches.</p>;
+    const how =
+      result.mode === "exhaustive"
+        ? `every combination (${result.tested})`
+        : `${result.tested} sampled cases`;
+    return <p className="verify-msg is-ok">Passed — checked {how}.</p>;
   }
   if (result.oscillated) {
     return (
@@ -173,13 +186,9 @@ function VerifySummary({
   if (!row) {
     return <p className="verify-msg is-bad">Wire the output terminal(s) up first.</p>;
   }
-  const inParts = challenge.inputs.map((n, i) => `${n}=${row.inputs[i]}`).join(", ");
-  const wantParts = challenge.outputs
-    .map((n, i) => `${n}=${row.expected[i]}`)
-    .join(", ");
-  const gotParts = challenge.outputs
-    .map((n, i) => `${n}=${logicLabel(row.actual[i] ?? "x")}`)
-    .join(", ");
+  const inParts = inNames.map((n, i) => `${n}=${row.inputs[i]}`).join(", ");
+  const wantParts = outNames.map((n, i) => `${n}=${row.expected[i]}`).join(", ");
+  const gotParts = outNames.map((n, i) => `${n}=${valLabel(row.actual[i])}`).join(", ");
   return (
     <p className="verify-msg is-bad">
       Fails when {inParts}: expected {wantParts}, got {gotParts}.
@@ -187,7 +196,7 @@ function VerifySummary({
   );
 }
 
-/** Full truth table with a pass/fail marker per row. */
+/** Truth table with a pass/fail marker per row; long sampled runs show failures only. */
 function TruthTable({
   result,
   challenge,
@@ -195,23 +204,33 @@ function TruthTable({
   result: VerifyResult;
   challenge: Challenge;
 }) {
+  const inNames = challengeInputs(challenge).map((t) => t.name);
+  const outNames = challengeOutputs(challenge).map((t) => t.name);
+
+  const fails = result.rows.filter((r) => !r.ok);
+  const shown =
+    result.rows.length <= 20
+      ? result.rows
+      : (fails.length > 0 ? fails : result.rows).slice(0, 16);
+  const omitted = result.rows.length - shown.length;
+
   return (
     <div className="truth-wrap">
       <table className="truth">
         <thead>
           <tr>
-            {challenge.inputs.map((n) => (
+            {inNames.map((n) => (
               <th key={n}>{n}</th>
             ))}
             <th className="sep" />
-            {challenge.outputs.map((n) => (
+            {outNames.map((n) => (
               <th key={n}>{n}</th>
             ))}
             <th />
           </tr>
         </thead>
         <tbody>
-          {result.rows.map((row, i) => (
+          {shown.map((row, i) => (
             <tr key={i} className={row.ok ? "" : "is-bad"}>
               {row.inputs.map((b, j) => (
                 <td key={j}>{b}</td>
@@ -219,7 +238,7 @@ function TruthTable({
               <td className="sep" />
               {row.actual.map((v, j) => (
                 <td key={j} className={v !== row.expected[j] ? "is-wrong" : ""}>
-                  {logicLabel(v)}
+                  {valLabel(v)}
                 </td>
               ))}
               <td>{row.ok ? "✓" : "✕"}</td>
@@ -227,6 +246,7 @@ function TruthTable({
           ))}
         </tbody>
       </table>
+      {omitted > 0 && <p className="truth-more">…and {omitted} more rows</p>}
     </div>
   );
 }

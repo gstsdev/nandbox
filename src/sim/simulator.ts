@@ -121,11 +121,19 @@ export class Simulator {
    * update a running circuit without rebuilding the whole simulator.
    */
   pokeState(id: ComponentId, state: Record<string, unknown>): SettleResult {
+    this.setState(id, state);
+    return this.settle();
+  }
+
+  /**
+   * Queue a node's state change without settling. The verifier uses this to
+   * set several input terminals, then calls `settle()` once.
+   */
+  setState(id: ComponentId, state: Record<string, unknown>): void {
     const node = this.nodes.get(id);
-    if (!node) return { settled: true, steps: 0, time: this.now };
+    if (!node) return;
     node.state = state;
     this.queue.push(this.now, id);
-    return this.settle();
   }
 
   /**
