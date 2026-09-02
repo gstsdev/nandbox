@@ -2,6 +2,8 @@
 // the renderer and simulator are pure functions over it. This is what gets
 // saved to JSON, shared in a URL, and loaded back.
 
+import type { CompositeDef } from "./composite";
+
 export type ComponentId = string;
 export type WireId = string;
 
@@ -50,6 +52,8 @@ export const DOC_FORMAT = "nandbox.circuit/1" as const;
 export interface CircuitFile {
   format: typeof DOC_FORMAT;
   doc: CircuitDoc;
+  /** Block definitions referenced by `doc`, so they survive a reload. */
+  composites?: CompositeDef[];
 }
 
 /** A fresh, empty document with a new id. Used for "New document" and as the store's initial state. */

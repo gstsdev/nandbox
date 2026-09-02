@@ -3,7 +3,7 @@
 // in CircuitCanvas both build on these.
 
 import type { CircuitDoc, ComponentInstance, PortRef, Wire } from "../domain/types";
-import { getPrimitive } from "../domain/primitives";
+import { getComponentDef } from "../domain/composite";
 import type { PortKind } from "../domain/primitives";
 
 /**
@@ -61,7 +61,7 @@ export interface PortHit {
  * Used to draw wires and port dots and to resolve wire endpoints.
  */
 export function portPosition(inst: ComponentInstance, port: string): Point | null {
-  const def = getPrimitive(inst.type);
+  const def = getComponentDef(inst.type);
   const p = def?.ports.find((pp) => pp.name === port);
   if (!p) return null;
   return { x: inst.x + p.dx, y: inst.y + p.dy };
@@ -72,7 +72,7 @@ export function portPosition(inst: ComponentInstance, port: string): Point | nul
  * in/out. Used by the renderer to draw port dots and by `portAt` for hit-testing.
  */
 export function eachPort(inst: ComponentInstance): PortHit[] {
-  const def = getPrimitive(inst.type);
+  const def = getComponentDef(inst.type);
   if (!def) return [];
   return def.ports.map((p) => ({
     ref: { component: inst.id, port: p.name },
@@ -92,7 +92,7 @@ export function componentBounds(inst: ComponentInstance): {
   w: number;
   h: number;
 } {
-  const def = getPrimitive(inst.type);
+  const def = getComponentDef(inst.type);
   return { x: inst.x, y: inst.y, w: def?.width ?? 40, h: def?.height ?? 30 };
 }
 

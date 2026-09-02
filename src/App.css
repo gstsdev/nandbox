@@ -136,6 +136,27 @@
   color: var(--accent-ink);
 }
 
+.palette-create {
+  width: 100%;
+  margin-top: 6px;
+  padding: 7px 8px;
+  font-size: 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.palette-create:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.palette-create:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .palette-tip {
   margin: 4px 0 0;
   font-size: 12px;

@@ -7,11 +7,13 @@
 // so all drawing below is done directly in world coordinates.
 
 import type { CircuitDoc, ComponentInstance, PortRef } from "../domain/types";
-import { getPrimitive } from "../domain/primitives";
-import type { Simulator } from "../sim/simulator";
+import { getComponentDef, isComposite } from "../domain/composite";
 import type { Logic } from "../sim/values";
 import type { Point, Viewport } from "./geometry";
 import { GRID, componentBounds, eachPort, endpoint, screenToWorld, snap } from "./geometry";
+
+/** Reads the logic value at a port, transparently following block boundaries. */
+export type SignalReader = (ref: PortRef, kind: "in" | "out") => Logic;
 
 export interface SceneColors {
   bg: string;
@@ -27,6 +29,7 @@ export interface SceneColors {
   inputOn: string;
   ledOn: string;
   ghost: string;
+  blockFill: string;
 }
 
 export interface RenderInput {
@@ -37,7 +40,7 @@ export interface RenderInput {
   dpr: number;
   view: Viewport;
   doc: CircuitDoc;
-  sim: Simulator;
+  read: SignalReader;
   selection: Set<string>;
   wireDraft: PortRef | null;
   /** Current pointer position in world space, for the wire draft and ghost. */
@@ -79,7 +82,7 @@ export function renderScene(input: RenderInput): void {
     const a = endpoint(doc, w.from);
     const b = endpoint(doc, w.to);
     if (!a || !b) continue;
-    drawWire(ctx, a, b, wireColor(input.sim.outputValue(w.from), colors));
+    drawWire(ctx, a, b, wireColor(input.read(w.from, "out"), colors));
   }
 
   drawWireDraft(input);
@@ -141,11 +144,12 @@ function drawWireDraft({ ctx, doc, wireDraft, pointerWorld, colors }: RenderInpu
 }
 
 function drawComponent(input: RenderInput, inst: ComponentInstance): void {
-  const { ctx, sim, selection, hoverPort, colors } = input;
-  const def = getPrimitive(inst.type);
+  const { ctx, read, selection, hoverPort, colors } = input;
+  const def = getComponentDef(inst.type);
   if (!def) return;
   const b = componentBounds(inst);
   const selected = selection.has(inst.id);
+  const composite = isComposite(def);
 
   if (inst.type === "input") {
     const on = inst.state?.value === 1;
@@ -157,7 +161,7 @@ function drawComponent(input: RenderInput, inst: ComponentInstance): void {
     ctx.stroke();
     label(ctx, on ? "1" : "0", b.x + b.w / 2, b.y + b.h / 2, colors.gateText, 13);
   } else if (inst.type === "output") {
-    const v = sim.inputValue({ component: inst.id, port: "in" });
+    const v = read({ component: inst.id, port: "in" }, "in");
     ctx.beginPath();
     ctx.arc(b.x + b.w / 2, b.y + b.h / 2, b.h / 2, 0, Math.PI * 2);
     ctx.fillStyle = v === 1 ? colors.ledOn : colors.gateFill;
@@ -167,17 +171,17 @@ function drawComponent(input: RenderInput, inst: ComponentInstance): void {
     ctx.stroke();
   } else {
     roundRect(ctx, b.x, b.y, b.w, b.h, 4);
-    ctx.fillStyle = colors.gateFill;
+    ctx.fillStyle = composite ? colors.blockFill : colors.gateFill;
     ctx.fill();
     ctx.strokeStyle = colors.gateStroke;
     ctx.lineWidth = STROKE_W;
     ctx.stroke();
-    label(ctx, def.title, b.x + b.w / 2, b.y + b.h / 2, colors.gateText, 10);
+    label(ctx, def.title, b.x + b.w / 2, b.y + b.h / 2, colors.gateText, composite ? 9 : 10);
   }
 
   // Port pins and stubs.
   for (const p of eachPort(inst)) {
-    const v = p.kind === "out" ? sim.outputValue(p.ref) : sim.inputValue(p.ref);
+    const v = read(p.ref, p.kind === "out" ? "out" : "in");
     const stubX = p.kind === "out" ? p.x + 4 : p.x - 4;
     ctx.strokeStyle = wireColor(v, colors);
     ctx.lineWidth = WIRE_W;
@@ -196,6 +200,18 @@ function drawComponent(input: RenderInput, inst: ComponentInstance): void {
       ctx.strokeStyle = colors.selection;
       ctx.lineWidth = 0.6;
       ctx.stroke();
+    }
+  }
+
+  // Block ports are named (in1, out2, …); print them just inside each edge.
+  if (composite) {
+    ctx.fillStyle = colors.gateText;
+    ctx.font = `500 5.5px ${MONO}`;
+    ctx.textBaseline = "middle";
+    for (const p of eachPort(inst)) {
+      ctx.textAlign = p.kind === "in" ? "left" : "right";
+      const tx = p.kind === "in" ? p.x + 3 : p.x - 3;
+      ctx.fillText(p.ref.port, tx, p.y);
     }
   }
 
@@ -225,7 +241,7 @@ function drawComponent(input: RenderInput, inst: ComponentInstance): void {
 /** Translucent preview of the component that a click would place. */
 function drawGhost({ ctx, pendingPlacement, pointerWorld, colors }: RenderInput): void {
   if (!pendingPlacement || !pointerWorld) return;
-  const def = getPrimitive(pendingPlacement);
+  const def = getComponentDef(pendingPlacement);
   if (!def) return;
   const x = snap(pointerWorld.x - def.width / 2);
   const y = snap(pointerWorld.y - def.height / 2);

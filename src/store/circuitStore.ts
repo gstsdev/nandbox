@@ -11,21 +11,25 @@
 // obviously correct; incremental updates are a later optimisation.
 
 import { create } from "zustand";
-import type {
-  CircuitDoc,
-  CircuitFile,
-  ComponentId,
-  PortRef,
-  Wire,
-} from "../domain/types";
+import type { CircuitDoc, CircuitFile, ComponentId, PortRef, Wire } from "../domain/types";
 import { DOC_FORMAT, samePort } from "../domain/types";
-import { getPrimitive } from "../domain/primitives";
+import type { CompositeDef } from "../domain/composite";
+import {
+  clearComposites,
+  getComponentDef,
+  getComposite,
+  isComposite,
+  registerComposite,
+} from "../domain/composite";
 import { Simulator } from "../sim/simulator";
+import { flatten } from "../sim/flatten";
+import type { Logic } from "../sim/values";
 import type { Viewport } from "../canvas/geometry";
 import { snap } from "../canvas/geometry";
 import { buildStarterDoc, getChallenge } from "../challenges";
 import type { VerifyResult } from "../challenges/verify";
 import { verifyChallenge } from "../challenges/verify";
+import { buildComposite } from "./encapsulate";
 
 interface SimStatus {
   settled: boolean;
@@ -45,16 +49,25 @@ interface CircuitState {
   /** Output port a wire is being dragged from, or null. */
   wireDraft: PortRef | null;
   sim: Simulator;
+  /** Maps "instanceId:blockPort" to the flat internal port carrying its value. */
+  signalAlias: Map<string, PortRef>;
   simStatus: SimStatus;
   activeChallengeId: string;
   /** Result of the last "Check", or null if not run since the circuit changed. */
   verifyResult: VerifyResult | null;
+  /** Registered block types, in creation order — drives the palette's Blocks group. */
+  blockTypes: string[];
+
+  /** Read a port's logic value, following block boundaries. Used by the renderer. */
+  readSignal: (ref: PortRef, kind: "in" | "out") => Logic;
 
   // --- placement / structure ---
   armPlacement: (type: string | null) => void;
   placeComponent: (worldX: number, worldY: number) => void;
   setComponentPosition: (id: ComponentId, x: number, y: number, snapToGrid?: boolean) => void;
   deleteSelection: () => void;
+  /** Replace the current selection with a single reusable block named `name`. */
+  encapsulate: (name: string) => void;
 
   // --- wiring ---
   beginWire: (from: PortRef) => void;
@@ -85,11 +98,43 @@ interface CircuitState {
   verify: () => void;
 }
 
-/** Build a fresh simulator for `doc`, settle it, and return it with its status. */
-function recompute(doc: CircuitDoc): { sim: Simulator; simStatus: SimStatus } {
-  const sim = new Simulator(doc);
+/**
+ * Flatten any blocks, build a fresh simulator, settle it, and return the parts
+ * of the store state that depend on the circuit. Spread into every `set` that
+ * changes behaviour.
+ */
+function recompute(doc: CircuitDoc): {
+  sim: Simulator;
+  signalAlias: Map<string, PortRef>;
+  simStatus: SimStatus;
+} {
+  const { flat, alias } = flatten(doc);
+  const sim = new Simulator(flat);
   const result = sim.reset();
-  return { sim, simStatus: { settled: result.settled, steps: result.steps } };
+  return {
+    sim,
+    signalAlias: alias,
+    simStatus: { settled: result.settled, steps: result.steps },
+  };
+}
+
+/**
+ * Every composite referenced by `doc`, transitively (a saved block's internals
+ * may reference other blocks). Written into the file so blocks survive a reload.
+ */
+function usedComposites(doc: CircuitDoc): CompositeDef[] {
+  const found = new Map<string, CompositeDef>();
+  const visit = (d: CircuitDoc): void => {
+    for (const c of Object.values(d.components)) {
+      const def = getComposite(c.type);
+      if (def && !found.has(def.type)) {
+        found.set(def.type, def);
+        visit(def.sub);
+      }
+    }
+  };
+  visit(doc);
+  return [...found.values()];
 }
 
 const initialDoc = buildStarterDoc(getChallenge("sandbox"));
@@ -103,6 +148,13 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
   ...recompute(initialDoc),
   activeChallengeId: "sandbox",
   verifyResult: null,
+  blockTypes: [],
+
+  readSignal: (ref, kind) => {
+    const { sim, signalAlias } = get();
+    const flatRef = signalAlias.get(`${ref.component}:${ref.port}`) ?? ref;
+    return kind === "out" ? sim.outputValue(flatRef) : sim.inputValue(flatRef);
+  },
 
   armPlacement: (type) => set({ pendingPlacement: type, wireDraft: null }),
 
@@ -114,7 +166,7 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
   placeComponent: (worldX, worldY) => {
     const { pendingPlacement, doc } = get();
     if (!pendingPlacement) return;
-    const def = getPrimitive(pendingPlacement);
+    const def = getComponentDef(pendingPlacement);
     if (!def) return;
     const id = crypto.randomUUID();
     const inst = {
@@ -122,7 +174,7 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
       type: pendingPlacement,
       x: snap(worldX - def.width / 2),
       y: snap(worldY - def.height / 2),
-      state: def.initialState?.(),
+      state: isComposite(def) ? undefined : def.initialState?.(),
     };
     const nextDoc: CircuitDoc = {
       ...doc,
@@ -179,6 +231,25 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
     set({ doc: nextDoc, selection: [], verifyResult: null, ...recompute(nextDoc) });
   },
 
+  /**
+   * Bundle the selected components into one reusable block, register it so it
+   * appears in the palette, and swap the selection for a single instance with
+   * boundary wires re-routed.
+   */
+  encapsulate: (name) => {
+    const { doc, selection } = get();
+    const result = buildComposite(doc, selection, name);
+    if (!result) return;
+    registerComposite(result.def);
+    set({
+      doc: result.nextDoc,
+      selection: [result.instanceId],
+      verifyResult: null,
+      blockTypes: [...get().blockTypes, result.def.type],
+      ...recompute(result.nextDoc),
+    });
+  },
+
   beginWire: (from) => set({ wireDraft: from, pendingPlacement: null }),
   cancelWire: () => set({ wireDraft: null }),
 
@@ -211,7 +282,7 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
     if (samePort(wireDraft, to)) return;
 
     const kindOf = (r: PortRef) =>
-      getPrimitive(doc.components[r.component]?.type ?? "")?.ports.find(
+      getComponentDef(doc.components[r.component]?.type ?? "")?.ports.find(
         (p) => p.name === r.port,
       )?.kind;
 
@@ -287,7 +358,11 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
     });
   },
 
+  /** Load a saved file: register its blocks first, then swap in its document. */
   loadFile: (file) => {
+    clearComposites();
+    const composites = file.composites ?? [];
+    for (const c of composites) registerComposite(c);
     const doc = file.doc;
     set({
       doc,
@@ -295,11 +370,16 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
       wireDraft: null,
       pendingPlacement: null,
       verifyResult: null,
+      blockTypes: composites.map((c) => c.type),
       ...recompute(doc),
     });
   },
 
-  exportFile: () => ({ format: DOC_FORMAT, doc: get().doc }),
+  exportFile: () => ({
+    format: DOC_FORMAT,
+    doc: get().doc,
+    composites: usedComposites(get().doc),
+  }),
 
   /** Switch challenges: load the new one's starter canvas and reset the view. */
   setActiveChallenge: (id) => {

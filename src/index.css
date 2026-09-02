@@ -31,6 +31,7 @@
   --scene-input-on: #cfeee8;
   --scene-led-on: #12b39e;
   --scene-ghost: #dfe4ea;
+  --scene-block: #e8eef6;
 
   --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -64,6 +65,7 @@
     --scene-input-on: #123a35;
     --scene-led-on: #3fd4bb;
     --scene-ghost: #2a2f38;
+    --scene-block: #1b2a33;
   }
 }
 
@@ -94,6 +96,7 @@
   --scene-input-on: #123a35;
   --scene-led-on: #3fd4bb;
   --scene-ghost: #2a2f38;
+  --scene-block: #1b2a33;
 }
 
 * {

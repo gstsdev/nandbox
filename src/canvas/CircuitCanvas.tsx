@@ -7,7 +7,7 @@
 import { useEffect, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { PortRef } from "../domain/types";
-import { getPrimitive } from "../domain/primitives";
+import { getComponentDef } from "../domain/composite";
 import { useCircuitStore } from "../store/circuitStore";
 import type { Point } from "./geometry";
 import { componentAt, portAt, screenToWorld, wireAt } from "./geometry";
@@ -86,7 +86,7 @@ export function CircuitCanvas() {
         dpr: dims.current.dpr,
         view: s.view,
         doc: s.doc,
-        sim: s.sim,
+        read: s.readSignal,
         selection: new Set(s.selection),
         wireDraft: s.wireDraft,
         pointerWorld: pointerWorld.current,
@@ -283,7 +283,7 @@ function CanvasHints() {
   const pending = useCircuitStore((s) => s.pendingPlacement);
   const wiring = useCircuitStore((s) => s.wireDraft !== null);
   const text = pending
-    ? `Click to place ${getPrimitive(pending)?.title ?? pending} · Esc to cancel`
+    ? `Click to place ${getComponentDef(pending)?.title ?? pending} · Esc to cancel`
     : wiring
       ? "Release on an input port to connect · Esc to cancel"
       : "Drag a port to wire · click a port to disconnect · click a switch to toggle · Del to remove";
@@ -305,6 +305,7 @@ const DEFAULT_COLORS: SceneColors = {
   inputOn: "#123a35",
   ledOn: "#3fd4bb",
   ghost: "#2a2f38",
+  blockFill: "#1b2a33",
 };
 
 /** Read the scene palette from `--scene-*` CSS variables on the host element. */
@@ -327,5 +328,6 @@ function readColors(host: HTMLElement | null): SceneColors {
     inputOn: v("--scene-input-on", DEFAULT_COLORS.inputOn),
     ledOn: v("--scene-led-on", DEFAULT_COLORS.ledOn),
     ghost: v("--scene-ghost", DEFAULT_COLORS.ghost),
+    blockFill: v("--scene-block", DEFAULT_COLORS.blockFill),
   };
 }

@@ -1,7 +1,8 @@
 // Event-driven gate simulator.
 //
-// The editor is hierarchical, but the simulator is not: it works on a flat
-// set of primitive nodes. Each output port carries a current Logic value.
+// The editor is hierarchical, but the simulator is not: callers pass a
+// document that `flatten()` has already reduced to primitive components only.
+// Each output port carries a current Logic value.
 // Evaluating a node reads its input values (following wires to their driver),
 // computes new outputs, and — for any output that changed — schedules the
 // downstream nodes to re-evaluate after this node's propagation delay.
