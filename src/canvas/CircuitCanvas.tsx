@@ -23,6 +23,8 @@ type DragState =
   | { kind: "idle" }
   | { kind: "pan"; lastX: number; lastY: number }
   | { kind: "press"; id: string; downX: number; downY: number; isInput: boolean }
+  // Pointer is down on a port: a click here disconnects it, a drag starts a wire.
+  | { kind: "portpress"; ref: PortRef; downX: number; downY: number }
   | { kind: "move"; ids: string[]; last: Point }
   | { kind: "wire" };
 
@@ -154,8 +156,8 @@ export function CircuitCanvas() {
 
     const port = portAt(store.doc, world.x, world.y, PORT_HIT);
     if (port) {
-      store.beginWire(port.ref);
-      drag.current = { kind: "wire" };
+      // Defer: a click disconnects the port, a drag past the slop starts a wire.
+      drag.current = { kind: "portpress", ref: port.ref, downX: sx, downY: sy };
       return;
     }
 
@@ -205,6 +207,11 @@ export function CircuitCanvas() {
         const ids = store.selection.includes(d.id) ? store.selection : [d.id];
         drag.current = { kind: "move", ids, last: world };
       }
+    } else if (d.kind === "portpress") {
+      if (Math.hypot(sx - d.downX, sy - d.downY) > DRAG_SLOP) {
+        store.beginWire(d.ref);
+        drag.current = { kind: "wire" };
+      }
     } else if (d.kind === "move") {
       const dx = world.x - d.last.x;
       const dy = world.y - d.last.y;
@@ -224,6 +231,9 @@ export function CircuitCanvas() {
 
     if (d.kind === "press" && d.isInput) {
       store.toggleInput(d.id);
+    } else if (d.kind === "portpress") {
+      // Click on a port (no drag) → disconnect it.
+      store.removeWiresAtPort(d.ref);
     } else if (d.kind === "move") {
       for (const id of d.ids) {
         const inst = store.doc.components[id];
@@ -276,7 +286,7 @@ function CanvasHints() {
     ? `Click to place ${getPrimitive(pending)?.title ?? pending} · Esc to cancel`
     : wiring
       ? "Release on an input port to connect · Esc to cancel"
-      : "Drag from a port to wire · click a switch to toggle · Del to remove";
+      : "Drag a port to wire · click a port to disconnect · click a switch to toggle · Del to remove";
   return <div className="canvas-hints">{text}</div>;
 }
 

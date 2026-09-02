@@ -60,6 +60,8 @@ interface CircuitState {
   beginWire: (from: PortRef) => void;
   cancelWire: () => void;
   completeWire: (to: PortRef) => void;
+  /** Delete every wire touching a port (either endpoint). For click-to-disconnect. */
+  removeWiresAtPort: (ref: PortRef) => void;
 
   // --- simulation input ---
   toggleInput: (id: ComponentId) => void;
@@ -179,6 +181,22 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
 
   beginWire: (from) => set({ wireDraft: from, pendingPlacement: null }),
   cancelWire: () => set({ wireDraft: null }),
+
+  removeWiresAtPort: (ref) => {
+    const { doc } = get();
+    const wires: Record<string, Wire> = {};
+    let removed = 0;
+    for (const [wid, w] of Object.entries(doc.wires)) {
+      if (samePort(w.from, ref) || samePort(w.to, ref)) {
+        removed++;
+        continue;
+      }
+      wires[wid] = w;
+    }
+    if (removed === 0) return;
+    const nextDoc = { ...doc, wires };
+    set({ doc: nextDoc, verifyResult: null, ...recompute(nextDoc) });
+  },
 
   /**
    * Finish the wire started by `beginWire`. Normalises direction (always
