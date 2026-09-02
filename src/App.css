@@ -240,6 +240,78 @@
   font-size: 13px;
 }
 
+/* --- hints --- */
+.hint,
+.solution {
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.solution {
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+}
+
+.hint-tag {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+}
+
+.solution .hint-tag {
+  color: var(--warn);
+}
+
+.hint p,
+.solution p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.hint-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.hint-btn:hover {
+  border-color: var(--accent);
+}
+
+.hint-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.hint-link {
+  display: block;
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.hint-link:hover {
+  color: var(--warn);
+}
+
 /* --- verify block --- */
 .verify {
   margin-top: 4px;

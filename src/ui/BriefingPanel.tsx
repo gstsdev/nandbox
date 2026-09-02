@@ -1,5 +1,6 @@
-// The teaching half of the app: the lesson for the current challenge, plus —
-// for real challenges — the "Check" button and the resulting truth table.
+// The teaching half of the app: the lesson for the current challenge, its
+// on-demand hints and solution, and — for real challenges — the "Check" button
+// and the resulting truth table.
 
 import { useState } from "react";
 import { CHALLENGES, getChallenge } from "../challenges";
@@ -57,6 +58,9 @@ export function BriefingPanel() {
       <div className="briefing-body">
         <Section label="The goal">{challenge.goal}</Section>
         <Section label="How it works">{challenge.howItWorks}</Section>
+        {challenge.hints && challenge.hints.length > 0 && (
+          <HintsSection challenge={challenge} key={challenge.id} />
+        )}
         <Section label="Fun fact" accent>
           {challenge.funFact}
         </Section>
@@ -66,6 +70,60 @@ export function BriefingPanel() {
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * Progressive hints plus a last-resort solution. The reveal state is local;
+ * the caller passes `key={challenge.id}` so switching challenges remounts this
+ * and clears what was revealed.
+ */
+function HintsSection({ challenge }: { challenge: Challenge }) {
+  const hints = challenge.hints ?? [];
+  const [revealed, setRevealed] = useState(0);
+  const [showSolution, setShowSolution] = useState(false);
+
+  return (
+    <section className="briefing-section hints">
+      <h3>Hints</h3>
+      {hints.slice(0, revealed).map((h, i) => (
+        <div className="hint" key={i}>
+          <span className="hint-tag">Hint {i + 1}</span>
+          <p>{h}</p>
+        </div>
+      ))}
+
+      {revealed < hints.length ? (
+        <button
+          type="button"
+          className="hint-btn"
+          onClick={() => setRevealed((n) => n + 1)}
+        >
+          {revealed === 0 ? "Show a hint" : "Show another hint"}
+          <span className="hint-count">
+            {revealed}/{hints.length}
+          </span>
+        </button>
+      ) : (
+        !showSolution &&
+        challenge.solution && (
+          <button
+            type="button"
+            className="hint-link"
+            onClick={() => setShowSolution(true)}
+          >
+            Still stuck? Show the solution
+          </button>
+        )
+      )}
+
+      {showSolution && challenge.solution && (
+        <div className="solution">
+          <span className="hint-tag">Solution</span>
+          <p>{challenge.solution}</p>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -129,7 +187,7 @@ function VerifySummary({
   );
 }
 
-/** Full truth table with a pass/fail dot per row. */
+/** Full truth table with a pass/fail marker per row. */
 function TruthTable({
   result,
   challenge,

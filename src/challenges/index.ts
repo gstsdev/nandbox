@@ -2,9 +2,13 @@
 // terminals, a whitelist of components the palette offers, and a reference
 // truth function the verifier checks against.
 //
+// Teaching structure: `howItWorks` frames the problem conceptually without
+// giving the construction; `hints` are revealed one at a time on demand and
+// lead progressively toward the answer; `solution` is the explicit wiring,
+// shown only when the learner asks for it.
+//
 // A challenge's canvas starts from `buildStarterDoc`: locked input terminals
-// down the left, locked output terminals down the right, and the user wires
-// the logic between them.
+// down the left, locked output terminals down the right.
 
 import type { CircuitDoc, ComponentInstance } from "../domain/types";
 
@@ -15,8 +19,12 @@ export interface Challenge {
   title: string;
   /** What you're building and why it matters. */
   goal: string;
-  /** How the concept works — a paragraph the briefing panel renders. */
+  /** The concept and the shape of the problem — deliberately not the answer. */
   howItWorks: string;
+  /** Revealed one at a time; hint 1 nudges, the last is nearly the answer. */
+  hints?: string[];
+  /** The explicit construction, shown only on request. */
+  solution?: string;
   /** A short aside: history or a surprising fact. */
   funFact: string;
   /** Plain description of what the verifier checks. */
@@ -97,13 +105,20 @@ export const CHALLENGES: Challenge[] = [
     inputs: [],
     outputs: [],
   },
+
   {
     id: "not-from-nand",
     index: 1,
     title: "NOT from NAND",
     goal: "Build an inverter using only a NAND gate: the output is the opposite of the input.",
     howItWorks:
-      "A NAND gate outputs 0 only when both its inputs are 1. Feed the same signal into both inputs and it becomes a NOT: 0 → 1, 1 → 0.",
+      "A NAND gate outputs 0 only when both of its inputs are 1; in every other case it outputs 1. You have one incoming signal and one NAND. Think about how the NAND behaves if both of its inputs always see that same signal.",
+    hints: [
+      "A NAND with both inputs at 0 outputs 1; with both inputs at 1 it outputs 0. That is already the behaviour of an inverter.",
+      "Only one wire arrives at the challenge, but a NAND has two input pins. Nothing stops both pins connecting to the same wire.",
+    ],
+    solution:
+      "Wire input a to BOTH input pins of the NAND. Wire the NAND's output to y. Then a=0 gives NAND(0,0)=1 and a=1 gives NAND(1,1)=0.",
     funFact:
       "Feeding one signal into both inputs of a NAND is the first move in the classic 'build a computer from NAND' progression — every gate below depends on it.",
     checks: "Input 0 must give 1, and input 1 must give 0. Both cases are tested.",
@@ -112,13 +127,20 @@ export const CHALLENGES: Challenge[] = [
     outputs: ["y"],
     truth: ([a]) => [a ? 0 : 1],
   },
+
   {
     id: "and-from-nand",
     index: 2,
     title: "AND from NAND",
     goal: "Build a 2-input AND gate from NAND gates only.",
     howItWorks:
-      "NAND is an AND followed by a NOT. So AND is a NAND followed by another NOT — and you already know how to make a NOT from a NAND.",
+      "A NAND computes not(a and b) — an AND with the result flipped. You want a plain AND. You already know how to flip a signal from the previous challenge.",
+    hints: [
+      "If a NAND hands you not(a and b), what single operation turns that back into (a and b)?",
+      "Apply a NOT to the NAND's output — and a NOT is itself a NAND with its inputs tied together.",
+    ],
+    solution:
+      "First NAND takes a and b, giving not(a and b). Feed that into a second NAND wired as an inverter (both pins tied to the first NAND's output). Its output is (a and b) → y.",
     funFact:
       "AND from NAND costs two gates. Early NMOS chips counted every transistor, so designers often restructured logic to avoid that extra inverter.",
     checks: "All four input combinations are checked against the AND truth table.",
@@ -127,13 +149,20 @@ export const CHALLENGES: Challenge[] = [
     outputs: ["y"],
     truth: ([a, b]) => [a && b ? 1 : 0],
   },
+
   {
     id: "or-from-nand",
     index: 3,
     title: "OR from NAND",
     goal: "Build a 2-input OR gate from NAND gates only.",
     howItWorks:
-      "By De Morgan's law, a OR b is the same as NOT((NOT a) AND (NOT b)) — which is NAND(NOT a, NOT b). Invert each input, then NAND them.",
+      "De Morgan's law says a or b is the same as not((not a) and (not b)). Look closely at that outer 'not(… and …)' — it is exactly the shape of a NAND.",
+    hints: [
+      "not((not a) and (not b)) is the same as NAND(not a, not b).",
+      "Invert a, invert b, then feed both inverted signals into one NAND. That NAND's output is a or b.",
+    ],
+    solution:
+      "Build two inverters (NOT-from-NAND), one for a and one for b. Feed both inverter outputs into a third NAND. Its output is a or b → y.",
     funFact:
       "De Morgan's laws, from the 1850s, are why NAND and NOR are each enough on their own: they let you turn any AND into an OR and back by flipping inputs and outputs.",
     checks: "All four input combinations are checked against the OR truth table.",
@@ -142,21 +171,30 @@ export const CHALLENGES: Challenge[] = [
     outputs: ["y"],
     truth: ([a, b]) => [a || b ? 1 : 0],
   },
+
   {
     id: "xor-from-nand",
     index: 4,
     title: "XOR from NAND",
     goal: "Build an exclusive-OR: output 1 when exactly one input is 1.",
     howItWorks:
-      "The classic four-NAND XOR: let m = NAND(a, b), then y = NAND(NAND(a, m), NAND(b, m)). Work through it with a = b = 1 to see why the middle term matters.",
+      "XOR is 1 when the inputs differ. One NAND is not enough — the standard construction uses four. The idea: compute one intermediate signal from a and b, then combine each original input with that intermediate before a final NAND.",
+    hints: [
+      "Start with m = NAND(a, b). It is 0 only when both inputs are 1.",
+      "Now compute NAND(a, m) and NAND(b, m) as two separate signals.",
+      "NAND those two results together for y. Trace a=1, b=1: m=0, so NAND(a,m)=1 and NAND(b,m)=1, so y = NAND(1,1) = 0 — correct, since 1 XOR 1 = 0.",
+    ],
+    solution:
+      "m = NAND(a, b). p = NAND(a, m). q = NAND(b, m). y = NAND(p, q). Four NAND gates total.",
     funFact:
-      "XOR is the heart of binary addition — a + b with no carry is exactly a XOR b. You'll reuse this gate in the half adder next.",
+      "XOR is the heart of binary addition — a + b with no carry is exactly a XOR b. You'll reuse this gate in the half adder.",
     checks: "All four input combinations are checked against the XOR truth table.",
     allowedTypes: FROM_NAND,
     inputs: ["a", "b"],
     outputs: ["y"],
     truth: ([a, b]) => [a === b ? 0 : 1],
   },
+
   {
     id: "mux2",
     index: 5,
@@ -164,15 +202,23 @@ export const CHALLENGES: Challenge[] = [
     goal:
       "Build a selector: when sel is 0 the output follows d0, when sel is 1 it follows d1.",
     howItWorks:
-      "y = (d0 AND NOT sel) OR (d1 AND sel). One path is enabled and the other forced to 0, then the two are OR'd together.",
+      "A multiplexer lets exactly one of its data inputs through to the output, chosen by sel. Think of sel and its inverse as two 'valves', each enabling one data path and blocking the other.",
+    hints: [
+      "When sel=0 you want d0 to reach the output and d1 forced to 0; when sel=1, the reverse.",
+      "d0 AND (NOT sel) equals d0 when sel=0 and 0 when sel=1. Build the mirror term for d1 using sel directly.",
+      "OR the two terms together: (d0 AND NOT sel) OR (d1 AND sel).",
+    ],
+    solution:
+      "g = NOT(sel). t0 = AND(d0, g). t1 = AND(d1, sel). y = OR(t0, t1).",
     funFact:
-      "The multiplexer is how a CPU chooses between operands — 'the number from the instruction' versus 'the number from a register'. You'll wire dozens of them into the datapath later.",
+      "The multiplexer is how a CPU chooses between operands — 'the number from the instruction' versus 'the number from a register'. You'll wire many into the datapath later.",
     checks: "All eight combinations of d0, d1, sel are checked.",
     allowedTypes: [...BASIC_GATES],
     inputs: ["d0", "d1", "sel"],
     outputs: ["y"],
     truth: ([d0, d1, sel]) => [sel ? d1 : d0],
   },
+
   {
     id: "half-adder",
     index: 6,
@@ -180,15 +226,21 @@ export const CHALLENGES: Challenge[] = [
     goal:
       "Add two bits. Produce their sum bit and the carry bit for the next column.",
     howItWorks:
-      "sum is a XOR b (1 when the bits differ). carry is a AND b (1 only when both are 1, i.e. the result is 2).",
+      "Adding two single bits: 0+0=0, 0+1=1, 1+0=1, 1+1=10 (binary two). The result needs two outputs — a sum bit for this column and a carry into the next. Write out when each output is 1.",
+    hints: [
+      "sum is 1 for 0+1 and 1+0, but 0 for 1+1 (it rolls over). One basic gate has exactly that truth table.",
+      "carry is 1 only for 1+1 — that is an AND.",
+    ],
+    solution: "sum = XOR(a, b). carry = AND(a, b).",
     funFact:
-      "It's called 'half' because it can't accept a carry coming in from a lower column. Chain a second one and you get a full adder — the next challenge.",
+      "It's called 'half' because it can't accept a carry coming in from a lower column. Chain a second one and you get a full adder.",
     checks: "All four input combinations are checked for both sum and carry.",
     allowedTypes: [...BASIC_GATES],
     inputs: ["a", "b"],
     outputs: ["sum", "carry"],
     truth: ([a, b]) => [a === b ? 0 : 1, a && b ? 1 : 0],
   },
+
   {
     id: "full-adder",
     index: 7,
@@ -196,7 +248,14 @@ export const CHALLENGES: Challenge[] = [
     goal:
       "Add three bits — a, b, and a carry-in — producing a sum bit and a carry-out.",
     howItWorks:
-      "sum is a XOR b XOR cin. carry-out is 1 when at least two of the three inputs are 1: (a AND b) OR (cin AND (a XOR b)).",
+      "Like the half adder, but a third input arrives: the carry from the previous column. You're adding three bits and still producing a sum bit and a carry-out. The running total can be 0, 1, 2, or 3.",
+    hints: [
+      "sum is 1 when an odd number of the three inputs are 1. Chaining XOR across all three does exactly that.",
+      "carry-out is 1 when at least two inputs are 1. (a AND b) handles the case where a and b are both set.",
+      "The other case is 'cin plus exactly one of a, b'. (a XOR b) is 1 when exactly one of them is set, so AND it with cin: cout = (a AND b) OR (cin AND (a XOR b)).",
+    ],
+    solution:
+      "s1 = XOR(a, b). sum = XOR(s1, cin). cout = OR(AND(a, b), AND(cin, s1)).",
     funFact:
       "Stack eight full adders, carry-out to carry-in, and you can add two 8-bit numbers. That chain is the 'ripple-carry adder' — and the reason addition gets slower for wider numbers.",
     checks: "All eight input combinations are checked for both outputs.",
