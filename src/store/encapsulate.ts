@@ -57,8 +57,26 @@ export function buildComposite(
     return A.y - B.y || A.x - B.x;
   });
 
+  // A dangling input is a "chain tail" if the same-named port on another
+  // selected instance of the same component type IS internally driven — i.e.
+  // it's the loose end of a carry/enable chain. Chain tails are ordered after
+  // the regular data inputs (so the ripple adder's cin lands last, not third).
+  const drivenPortNamesByType = new Map<string, Set<string>>();
+  for (const w of internalWires) {
+    const type = doc.components[w.to.component]?.type;
+    if (!type) continue;
+    const set = drivenPortNamesByType.get(type) ?? new Set<string>();
+    set.add(w.to.port);
+    drivenPortNamesByType.set(type, set);
+  }
+  const isChainTail = (ref: PortRef): boolean => {
+    const type = doc.components[ref.component]?.type ?? "";
+    return drivenPortNamesByType.get(type)?.has(ref.port) ?? false;
+  };
+
   // External inputs: dangling input ports, merged when fed by the same driver.
-  const inputGroups: { driver: PortRef | null; sinks: PortRef[] }[] = [];
+  type InGroup = { driver: PortRef | null; sinks: PortRef[]; tail: boolean };
+  const inputGroups: InGroup[] = [];
   const groupIndexByDriver = new Map<string, number>();
   for (const cid of ordered) {
     const def = getComponentDef(doc.components[cid].type);
@@ -67,21 +85,25 @@ export function buildComposite(
       if (p.kind !== "in") continue;
       const ref: PortRef = { component: cid, port: p.name };
       if (drivenInputs.has(portKey(ref))) continue;
+      const tail = isChainTail(ref);
       const feed = wires.find((w) => samePort(w.to, ref));
       if (feed && !idSet.has(feed.from.component)) {
         const dk = portKey(feed.from);
         const gi = groupIndexByDriver.get(dk);
         if (gi === undefined) {
           groupIndexByDriver.set(dk, inputGroups.length);
-          inputGroups.push({ driver: feed.from, sinks: [ref] });
+          inputGroups.push({ driver: feed.from, sinks: [ref], tail });
         } else {
           inputGroups[gi].sinks.push(ref);
+          inputGroups[gi].tail = inputGroups[gi].tail && tail;
         }
       } else {
-        inputGroups.push({ driver: null, sinks: [ref] });
+        inputGroups.push({ driver: null, sinks: [ref], tail });
       }
     }
   }
+  // Regular inputs keep spatial order; chain tails go to the end.
+  inputGroups.sort((a, b) => Number(a.tail) - Number(b.tail));
 
   // External outputs: output ports that leave the selection or go nowhere.
   const outputPorts: { source: PortRef; sinks: PortRef[] }[] = [];

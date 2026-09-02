@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { useCircuitStore } from './store/circuitStore.ts'
+import { getComponentDef, getComposite, listComposites } from './domain/composite.ts'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -12,5 +13,10 @@ createRoot(document.getElementById('root')!).render(
 
 // Dev-only hook for scripted testing from the console / devtools.
 if (import.meta.env.DEV) {
-  ;(window as unknown as { nandbox: unknown }).nandbox = { store: useCircuitStore }
+  ;(window as unknown as { nandbox: unknown }).nandbox = {
+    store: useCircuitStore,
+    getComponentDef,
+    getComposite,
+    listComposites,
+  }
 }
