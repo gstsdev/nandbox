@@ -157,6 +157,48 @@
   cursor: default;
 }
 
+/* --- selected block port reorder --- */
+.blockports {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.blockport-list {
+  margin-bottom: 10px;
+}
+
+.blockport-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 3px;
+}
+
+.blockport-name {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.blockport-row button {
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.blockport-row button:not(:disabled):hover {
+  border-color: var(--accent);
+}
+
+.blockport-row button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .palette-tip {
   margin: 4px 0 0;
   font-size: 12px;

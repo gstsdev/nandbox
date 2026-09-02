@@ -57,6 +57,8 @@ interface CircuitState {
   verifyResult: VerifyResult | null;
   /** Registered block types, in creation order — drives the palette's Blocks group. */
   blockTypes: string[];
+  /** Bumped whenever a block definition changes (e.g. port reorder), for UI reactivity. */
+  blockRevision: number;
 
   /** Read a port's bus value, following block boundaries. Used by the renderer. */
   readSignal: (ref: PortRef, kind: "in" | "out") => Bus;
@@ -68,6 +70,8 @@ interface CircuitState {
   deleteSelection: () => void;
   /** Replace the current selection with a single reusable block named `name`. */
   encapsulate: (name: string) => void;
+  /** Move one of a block's ports up (-1) or down (+1) among its same-kind ports. */
+  moveBlockPort: (type: string, portName: string, dir: -1 | 1) => void;
 
   // --- wiring ---
   beginWire: (from: PortRef) => void;
@@ -151,6 +155,7 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
   activeChallengeId: "sandbox",
   verifyResult: null,
   blockTypes: [],
+  blockRevision: 0,
 
   readSignal: (ref, kind) => {
     const { sim, signalAlias } = get();
@@ -248,8 +253,41 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
       selection: [result.instanceId],
       verifyResult: null,
       blockTypes: [...get().blockTypes, result.def.type],
+      blockRevision: get().blockRevision + 1,
       ...recompute(result.nextDoc),
     });
+  },
+
+  /**
+   * Move one of a block's ports up (-1) or down (+1) among its same-kind
+   * siblings. Port names are identities and don't change — only their order in
+   * the list and the vertical position of the pin — so no wires or port maps
+   * need rewriting and the circuit's behaviour is untouched.
+   */
+  moveBlockPort: (type, portName, dir) => {
+    const def = getComposite(type);
+    const kind = def?.ports.find((p) => p.name === portName)?.kind;
+    if (!def || !kind) return;
+
+    const sameKind = def.ports.filter((p) => p.kind === kind);
+    const from = sameKind.findIndex((p) => p.name === portName);
+    const to = from + dir;
+    if (to < 0 || to >= sameKind.length) return;
+    [sameKind[from], sameKind[to]] = [sameKind[to], sameKind[from]];
+
+    // Re-space the pins of this side; the other side is unchanged.
+    const n = sameKind.length;
+    const repositioned = sameKind.map((p, i) => ({
+      ...p,
+      dy: ((i + 1) * def.height) / (n + 1),
+    }));
+    const others = def.ports.filter((p) => p.kind !== kind);
+
+    registerComposite({
+      ...def,
+      ports: kind === "in" ? [...repositioned, ...others] : [...others, ...repositioned],
+    });
+    set({ blockRevision: get().blockRevision + 1 });
   },
 
   beginWire: (from) => set({ wireDraft: from, pendingPlacement: null }),
@@ -389,6 +427,7 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
       pendingPlacement: null,
       verifyResult: null,
       blockTypes: composites.map((c) => c.type),
+      blockRevision: get().blockRevision + 1,
       ...recompute(doc),
     });
   },

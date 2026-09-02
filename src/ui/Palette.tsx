@@ -82,8 +82,64 @@ export function Palette() {
         </div>
       )}
 
+      <SelectedBlockPorts />
+
       <p className="palette-tip">Pick a component, then click the canvas to place it.</p>
     </aside>
+  );
+}
+
+/** When one block instance is selected, lets you reorder its ports. */
+function SelectedBlockPorts() {
+  const rev = useCircuitStore((s) => s.blockRevision);
+  const type = useCircuitStore((s) => {
+    if (s.selection.length !== 1) return null;
+    const c = s.doc.components[s.selection[0]];
+    return c && getComposite(c.type) ? c.type : null;
+  });
+  const move = useCircuitStore((s) => s.moveBlockPort);
+  if (!type) return null;
+  const def = getComposite(type);
+  if (!def) return null;
+  const inputs = def.ports.filter((p) => p.kind === "in");
+  const outputs = def.ports.filter((p) => p.kind === "out");
+
+  const list = (ports: typeof inputs, label: string) => (
+    <div className="blockport-list">
+      <div className="palette-group-label">{label}</div>
+      {ports.map((p, i) => (
+        <div className="blockport-row" key={p.name}>
+          <span className="blockport-name">{p.name}</span>
+          <button
+            type="button"
+            disabled={i === 0}
+            onClick={() => move(type, p.name, -1)}
+            aria-label={`Move ${p.name} up`}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            disabled={i === ports.length - 1}
+            onClick={() => move(type, p.name, 1)}
+            aria-label={`Move ${p.name} down`}
+          >
+            ↓
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="palette-group blockports" key={rev}>
+      <div className="palette-group-label">{def.title} — ports</div>
+      {inputs.length > 1 ? list(inputs, "Inputs") : null}
+      {outputs.length > 1 ? list(outputs, "Outputs") : null}
+      {inputs.length <= 1 && outputs.length <= 1 && (
+        <p className="palette-tip">Only one port each side — nothing to reorder.</p>
+      )}
+    </div>
   );
 }
 
