@@ -19,6 +19,7 @@ import {
   getComponentDef,
   getComposite,
   isComposite,
+  listComposites,
   registerComposite,
 } from "../domain/composite";
 import { Simulator } from "../sim/simulator";
@@ -72,6 +73,8 @@ interface CircuitState {
   encapsulate: (name: string) => void;
   /** Move one of a block's ports up (-1) or down (+1) among its same-kind ports. */
   moveBlockPort: (type: string, portName: string, dir: -1 | 1) => void;
+  /** Rename a block port. Returns null on success, or a reason string if rejected. */
+  renameBlockPort: (type: string, oldName: string, newName: string) => string | null;
 
   // --- wiring ---
   beginWire: (from: PortRef) => void;
@@ -288,6 +291,67 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
       ports: kind === "in" ? [...repositioned, ...others] : [...others, ...repositioned],
     });
     set({ blockRevision: get().blockRevision + 1 });
+  },
+
+  /**
+   * Rename a block port. Because names are identities, this rewrites the port
+   * map key and every wire that referenced the old name — on instances in the
+   * current document and inside any other block that nests this one.
+   * Returns null on success or a short reason if the new name is rejected.
+   */
+  renameBlockPort: (type, oldName, newName) => {
+    const def = getComposite(type);
+    if (!def) return "unknown block";
+    const port = def.ports.find((p) => p.name === oldName);
+    if (!port) return "unknown port";
+
+    const trimmed = newName.trim();
+    if (trimmed === oldName) return null;
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
+      return "letters, digits, underscore; must not start with a digit";
+    }
+    if (def.ports.some((p) => p.name === trimmed)) return "name already used";
+
+    const renameKey = <T,>(m: Record<string, T>): Record<string, T> =>
+      Object.fromEntries(
+        Object.entries(m).map(([k, v]) => [k === oldName ? trimmed : k, v]),
+      );
+
+    registerComposite({
+      ...def,
+      ports: def.ports.map((p) => (p.name === oldName ? { ...p, name: trimmed } : p)),
+      inMap: port.kind === "in" ? renameKey(def.inMap) : def.inMap,
+      outMap: port.kind === "out" ? renameKey(def.outMap) : def.outMap,
+    });
+
+    // Rewrite wire endpoints naming the old port on any instance of this block.
+    const fixWires = (d: CircuitDoc): CircuitDoc => {
+      let changed = false;
+      const wires: Record<string, Wire> = {};
+      for (const [wid, w] of Object.entries(d.wires)) {
+        let nw = w;
+        if (d.components[w.from.component]?.type === type && w.from.port === oldName) {
+          nw = { ...nw, from: { ...nw.from, port: trimmed } };
+          changed = true;
+        }
+        if (d.components[w.to.component]?.type === type && w.to.port === oldName) {
+          nw = { ...nw, to: { ...nw.to, port: trimmed } };
+          changed = true;
+        }
+        wires[wid] = nw;
+      }
+      return changed ? { ...d, wires } : d;
+    };
+
+    for (const c of listComposites()) {
+      if (c.type === type) continue;
+      const fixed = fixWires(c.sub);
+      if (fixed !== c.sub) registerComposite({ ...c, sub: fixed });
+    }
+
+    const nextDoc = fixWires(get().doc);
+    set({ doc: nextDoc, blockRevision: get().blockRevision + 1, ...recompute(nextDoc) });
+    return null;
   },
 
   beginWire: (from) => set({ wireDraft: from, pendingPlacement: null }),

@@ -2,6 +2,7 @@
 // drops an instance. Below the built-ins sit the user's blocks, plus a button
 // that turns the current selection into a new block.
 
+import { useState } from "react";
 import { allPrimitives } from "../domain/primitives";
 import type { PrimitiveDef } from "../domain/primitives";
 import { getComposite } from "../domain/composite";
@@ -89,7 +90,7 @@ export function Palette() {
   );
 }
 
-/** When one block instance is selected, lets you reorder its ports. */
+/** When one block instance is selected, lets you rename and reorder its ports. */
 function SelectedBlockPorts() {
   const rev = useCircuitStore((s) => s.blockRevision);
   const type = useCircuitStore((s) => {
@@ -109,7 +110,7 @@ function SelectedBlockPorts() {
       <div className="palette-group-label">{label}</div>
       {ports.map((p, i) => (
         <div className="blockport-row" key={p.name}>
-          <span className="blockport-name">{p.name}</span>
+          <PortNameField type={type} name={p.name} />
           <button
             type="button"
             disabled={i === 0}
@@ -134,12 +135,61 @@ function SelectedBlockPorts() {
   return (
     <div className="palette-group blockports" key={rev}>
       <div className="palette-group-label">{def.title} — ports</div>
-      {inputs.length > 1 ? list(inputs, "Inputs") : null}
-      {outputs.length > 1 ? list(outputs, "Outputs") : null}
-      {inputs.length <= 1 && outputs.length <= 1 && (
-        <p className="palette-tip">Only one port each side — nothing to reorder.</p>
-      )}
+      {inputs.length > 0 && list(inputs, "Inputs")}
+      {outputs.length > 0 && list(outputs, "Outputs")}
+      <p className="palette-tip">Click a name to rename.</p>
     </div>
+  );
+}
+
+/** A port name shown as text; click to edit, Enter to commit, Esc to cancel. */
+function PortNameField({ type, name }: { type: string; name: string }) {
+  const rename = useCircuitStore((s) => s.renameBlockPort);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="blockport-name"
+        title="Rename"
+        onClick={() => {
+          setValue(name);
+          setError(null);
+          setEditing(true);
+        }}
+      >
+        {name}
+      </button>
+    );
+  }
+
+  const attempt = (keepOnError: boolean) => {
+    const err = rename(type, name, value);
+    if (!err || !keepOnError) setEditing(false);
+    else setError(err);
+  };
+
+  return (
+    <span className="blockport-edit">
+      <input
+        autoFocus
+        value={value}
+        spellCheck={false}
+        onChange={(e) => {
+          setValue(e.target.value);
+          setError(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") attempt(true);
+          else if (e.key === "Escape") setEditing(false);
+        }}
+        onBlur={() => attempt(false)}
+      />
+      {error && <span className="blockport-error">{error}</span>}
+    </span>
   );
 }
 

@@ -176,8 +176,42 @@
 
 .blockport-name {
   flex: 1;
+  text-align: left;
   font-family: var(--font-mono);
   font-size: 12px;
+  color: var(--text);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+.blockport-name:hover {
+  border-color: var(--border);
+  background: var(--panel-2);
+}
+
+.blockport-edit {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.blockport-edit input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+.blockport-error {
+  font-size: 10px;
+  color: var(--danger);
+  line-height: 1.3;
 }
 
 .blockport-row button {
