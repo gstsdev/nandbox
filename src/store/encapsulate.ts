@@ -5,10 +5,11 @@
 // merged into one); any output port that leaves the selection — or goes
 // nowhere — becomes a block output.
 //
-// Ports are ordered by the order the boundary wires were connected — the
-// student controls port order by wiring order, and can adjust it afterward
-// with the block's port controls. Ports left unwired at encapsulation time
-// fall back to spatial order and come last.
+// Ports are ordered the way you'd read the schematic: top to bottom, then
+// left to right, by each port's actual pin position. A merged input's
+// position is the topmost (then leftmost) of its sinks. This is a default
+// guess derived straight from the diagram — not a promise — and the block's
+// port controls let you rename or reorder freely afterward.
 //
 // The block keeps its full internal hierarchy (nested blocks stay nested);
 // the flattener expands it at simulation time.
@@ -19,6 +20,28 @@ import { getComponentDef } from "../domain/composite";
 import type { CompositeDef } from "../domain/composite";
 import type { PortDef } from "../domain/primitives";
 import { snap } from "../canvas/geometry";
+
+interface Pos {
+  x: number;
+  y: number;
+}
+
+/** Absolute world position of a port's pin: its component's origin plus the port's local offset. */
+function pinPos(doc: CircuitDoc, ref: PortRef): Pos {
+  const c = doc.components[ref.component];
+  const p = getComponentDef(c?.type ?? "")?.ports.find((pp) => pp.name === ref.port);
+  return { x: (c?.x ?? 0) + (p?.dx ?? 0), y: (c?.y ?? 0) + (p?.dy ?? 0) };
+}
+
+/** Reading order: top first, then left. */
+function readingOrder(a: Pos, b: Pos): number {
+  return a.y - b.y || a.x - b.x;
+}
+
+/** The topmost-then-leftmost position among a set of port refs. */
+function topmost(doc: CircuitDoc, refs: PortRef[]): Pos {
+  return refs.map((r) => pinPos(doc, r)).reduce((best, p) => (readingOrder(p, best) < 0 ? p : best));
+}
 
 export interface EncapResult {
   def: CompositeDef;
@@ -57,71 +80,53 @@ export function buildComposite(
   );
   const drivenInputs = new Set(internalWires.map((w) => portKey(w.to)));
 
-  const spatial = (a: PortRef, b: PortRef): number => {
-    const A = doc.components[a.component];
-    const B = doc.components[b.component];
-    return A.y - B.y || A.x - B.x;
-  };
-
-  // External inputs, in the order their wires were connected. A group is one
-  // external port; sinks fed by the same outside driver merge into it.
+  // External inputs: one group per dangling input port, merged when several
+  // share the same outside driver.
   const inputGroups: { driver: PortRef | null; sinks: PortRef[] }[] = [];
   const groupIndexByDriver = new Map<string, number>();
-  const claimedSinks = new Set<string>();
-  for (const w of wires) {
-    if (!idSet.has(w.to.component) || idSet.has(w.from.component)) continue;
-    if (drivenInputs.has(portKey(w.to))) continue;
-    const dk = portKey(w.from);
-    const gi = groupIndexByDriver.get(dk);
-    if (gi === undefined) {
-      groupIndexByDriver.set(dk, inputGroups.length);
-      inputGroups.push({ driver: w.from, sinks: [w.to] });
-    } else {
-      inputGroups[gi].sinks.push(w.to);
-    }
-    claimedSinks.add(portKey(w.to));
-  }
-  // Unwired dangling inputs come last, in spatial order.
-  const loose: PortRef[] = [];
   for (const cid of ids) {
     const def = getComponentDef(doc.components[cid].type);
     if (!def) continue;
     for (const p of def.ports) {
       if (p.kind !== "in") continue;
       const ref: PortRef = { component: cid, port: p.name };
-      if (drivenInputs.has(portKey(ref)) || claimedSinks.has(portKey(ref))) continue;
-      loose.push(ref);
+      if (drivenInputs.has(portKey(ref))) continue;
+      const feed = wires.find((w) => samePort(w.to, ref));
+      if (feed && !idSet.has(feed.from.component)) {
+        const dk = portKey(feed.from);
+        const gi = groupIndexByDriver.get(dk);
+        if (gi === undefined) {
+          groupIndexByDriver.set(dk, inputGroups.length);
+          inputGroups.push({ driver: feed.from, sinks: [ref] });
+        } else {
+          inputGroups[gi].sinks.push(ref);
+        }
+      } else {
+        inputGroups.push({ driver: null, sinks: [ref] });
+      }
     }
   }
-  for (const ref of loose.sort(spatial)) inputGroups.push({ driver: null, sinks: [ref] });
+  // Reading order: top to bottom, then left to right. A merged group sorts by
+  // its topmost sink, so a driver feeding a gate near the top of the
+  // selection reads there even if it also feeds a copy further down.
+  inputGroups.sort((a, b) => readingOrder(topmost(doc, a.sinks), topmost(doc, b.sinks)));
 
-  // External outputs, in the order their wires were connected; unwired outputs last.
+  // External outputs: a port that leaves the selection, or drives nothing.
   const outputPorts: { source: PortRef; sinks: PortRef[] }[] = [];
-  const outIndexBySource = new Map<string, number>();
-  for (const w of wires) {
-    if (!idSet.has(w.from.component) || idSet.has(w.to.component)) continue;
-    const sk = portKey(w.from);
-    const oi = outIndexBySource.get(sk);
-    if (oi === undefined) {
-      outIndexBySource.set(sk, outputPorts.length);
-      outputPorts.push({ source: w.from, sinks: [w.to] });
-    } else {
-      outputPorts[oi].sinks.push(w.to);
-    }
-  }
-  const looseOut: PortRef[] = [];
   for (const cid of ids) {
     const def = getComponentDef(doc.components[cid].type);
     if (!def) continue;
     for (const p of def.ports) {
       if (p.kind !== "out") continue;
       const ref: PortRef = { component: cid, port: p.name };
-      if (outIndexBySource.has(portKey(ref))) continue;
-      if (wires.some((w) => samePort(w.from, ref))) continue; // drives only internal
-      looseOut.push(ref);
+      const from = wires.filter((w) => samePort(w.from, ref));
+      const outside = from.filter((w) => !idSet.has(w.to.component)).map((w) => w.to);
+      if (outside.length > 0 || from.length === 0) {
+        outputPorts.push({ source: ref, sinks: outside });
+      }
     }
   }
-  for (const ref of looseOut.sort(spatial)) outputPorts.push({ source: ref, sinks: [] });
+  outputPorts.sort((a, b) => readingOrder(pinPos(doc, a.source), pinPos(doc, b.source)));
 
   if (inputGroups.length === 0 && outputPorts.length === 0) return null;
 
